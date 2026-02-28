@@ -22,6 +22,7 @@ from grs.contracts import (
 )
 from grs.core import EngineIntegrityError, build_forensic_artifact, gameplay_random
 from grs.football.coaching import PolicyDrivenCoachDecisionEngine, intent_to_playcall
+from grs.football.injury import InjuryEvaluationError, InjuryEvaluator
 from grs.football.models import GameSessionResult, SnapResolution
 from grs.football.resources import ResourceResolver
 from grs.football.resolver import FootballEngine
@@ -35,6 +36,7 @@ class GameSessionEngine:
     OFFENSE_SLOTS = ["QB1", "RB1", "WR1", "WR2", "WR3", "TE1", "LT", "LG", "C", "RG", "RT"]
     DEFENSE_SLOTS = ["DE1", "DT1", "DT2", "DE2", "LB1", "LB2", "LB3", "CB1", "CB2", "S1", "S2"]
     PUNT_OFFENSE_SLOTS = ["P", "LT", "LG", "C", "RG", "RT", "TE1", "WR1", "WR2", "CB1", "S1"]
+    PUNT_RETURN_SLOTS = ["DE1", "DT1", "DT2", "DE2", "LB1", "LB2", "LB3", "CB1", "CB2", "S1", "RB1"]
     FIELD_GOAL_OFFENSE_SLOTS = ["K", "LT", "LG", "C", "RG", "RT", "TE1", "LB1", "LB2", "DE1", "DE2"]
     KICKOFF_OFFENSE_SLOTS = ["K", "LB1", "LB2", "LB3", "CB1", "CB2", "S1", "S2", "DE1", "DE2", "WR1"]
     KICKOFF_RETURN_SLOTS = ["RB1", "WR1", "WR2", "WR3", "TE1", "LB1", "LB2", "CB1", "S1", "S2", "DE1"]
@@ -51,6 +53,7 @@ class GameSessionEngine:
         self._coach_engine = coach_engine or PolicyDrivenCoachDecisionEngine(repository=ResourceResolver(), policy_id="balanced_default")
         self._validator = validator or PreSimValidator()
         self._random_source = random_source or gameplay_random()
+        self._injury_evaluator = InjuryEvaluator()
 
     def run_game(
         self,
@@ -205,7 +208,11 @@ class GameSessionEngine:
         return self.OFFENSE_SLOTS
 
     def _defense_slots_for_play_type(self, play_type: PlayType) -> list[str]:
-        return self.KICKOFF_RETURN_SLOTS if play_type == PlayType.KICKOFF else self.DEFENSE_SLOTS
+        if play_type == PlayType.KICKOFF:
+            return self.KICKOFF_RETURN_SLOTS
+        if play_type == PlayType.PUNT:
+            return self.PUNT_RETURN_SLOTS
+        return self.DEFENSE_SLOTS
 
     def _resolve_side(self, team: Franchise, slots: list[str]) -> list[ActorRef]:
         by_id = {p.player_id: p for p in team.roster}
@@ -228,7 +235,8 @@ class GameSessionEngine:
         for p in participants:
             fatigue = fatigue_map.get(p.actor_id, 0.1)
             limitation = injuries.get(p.actor_id, "none")
-            discipline_seed = (abs(hash((p.actor_id, p.role))) % 100) / 100.0
+            hash_key = f"{p.actor_id}:{p.role}".encode("ascii", "ignore")
+            discipline_seed = (int(hashlib.sha256(hash_key).hexdigest()[:8], 16) / 0xFFFFFFFF)
             states[p.actor_id] = InGameState(
                 fatigue=fatigue,
                 acute_wear=min(1.0, fatigue * 0.9),
@@ -268,10 +276,10 @@ class GameSessionEngine:
 
     def _apply_score(self, state: GameSessionState, score_event: str | None, offense_team_id: str, defense_team_id: str) -> None:
         if score_event is None:
-            if state.yard_line >= 99 and state.down == 1:
-                self._add_points(state, offense_team_id, 6)
             return
-        if score_event == "FG_GOOD":
+        if score_event == "OFF_TD":
+            self._add_points(state, offense_team_id, 6)
+        elif score_event == "FG_GOOD":
             self._add_points(state, offense_team_id, 3)
         elif score_event == "XP_GOOD":
             self._add_points(state, offense_team_id, 1)
@@ -287,20 +295,27 @@ class GameSessionEngine:
             state.away_score += points
 
     def _update_injuries(self, state: GameSessionState, resolution: SnapResolution, player_lookup: dict[str, Player]) -> None:
-        for rep in resolution.rep_ledger:
-            actor_id = rep.actors[0].actor_id
-            player = player_lookup.get(actor_id)
-            if player is None:
-                continue
-            traits = getattr(player, "traits", {})
-            key = f"{resolution.play_result.play_id}:{rep.rep_type}:{actor_id}".encode("ascii", "ignore")
-            jitter = (int(hashlib.sha256(key).hexdigest()[:8], 16) / 0xFFFFFFFF) * 0.03
-            contact = float(traits.get("contact_injury_risk", 50.0))
-            soft = float(traits.get("soft_tissue_risk", 50.0))
-            dur = float(traits.get("durability", 50.0))
-            injury_prob = (((contact - 1.0) / 98.0) * 0.012) + (((soft - 1.0) / 98.0) * 0.008) + ((1.0 - ((dur - 1.0) / 98.0)) * 0.006) + jitter
-            if injury_prob > 0.018:
-                state.active_injuries[actor_id] = "limited"
+        try:
+            injuries = self._injury_evaluator.evaluate(
+                resolution=resolution,
+                player_lookup=player_lookup,
+                random_source=self._random_source,
+            )
+        except InjuryEvaluationError as exc:
+            artifact = build_forensic_artifact(
+                engine_scope="football_session",
+                error_code="MISSING_REQUIRED_TRAIT_AT_RUNTIME",
+                message=str(exc),
+                state_snapshot={
+                    "game_id": state.game_id,
+                    "play_id": resolution.play_result.play_id,
+                },
+                context={},
+                identifiers={"game_id": state.game_id, "play_id": resolution.play_result.play_id},
+                causal_fragment=["injury_evaluation"],
+            )
+            raise EngineIntegrityError(artifact) from exc
+        state.active_injuries.update(injuries)
 
     def _validation_hard_fail(self, game_id: str, play_id: str, issues: list[ValidationIssue], phase: str) -> EngineIntegrityError:
         artifact = build_forensic_artifact(

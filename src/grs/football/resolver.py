@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Iterable
 
 from grs.contracts import (
     ActorRef,
+    AssignmentTemplate,
     CausalityChain,
     CausalityNode,
     ContestInput,
@@ -32,9 +33,22 @@ from grs.contracts import (
 )
 from grs.core import EngineIntegrityError, build_forensic_artifact, gameplay_random, make_id, now_utc
 from grs.football.contest import ContestEvaluator, parse_influence_profiles, required_influence_families
+from grs.football.matchup import MatchupCompileError, MatchupCompiler
 from grs.football.models import SnapResolution
 from grs.football.resources import ResourceResolver
 from grs.football.validation import PreSimValidator
+
+
+@dataclass(slots=True)
+class _TerminalOutcome:
+    play_id: str
+    yards: int
+    new_spot: int
+    turnover: bool
+    turnover_type: str | None
+    score_event: str | None
+    penalties: list[PenaltyArtifact]
+    clock_delta: int
 
 
 class FootballResolver:
@@ -63,6 +77,7 @@ class FootballResolver:
         self._random_source = random_source or gameplay_random()
         self._resource_resolver = resource_resolver or ResourceResolver()
         self._contest = ContestEvaluator()
+        self._matchup_compiler = MatchupCompiler()
         self._families: dict[str, dict[str, PlayFamilyInfluenceProfile]] = {}
         self._outcome_profiles: dict[str, OutcomeResolutionProfile] = {}
         self._load_profiles()
@@ -71,12 +86,25 @@ class FootballResolver:
         offense, defense = self._infer_teams(scp.participants, scp.situation.possession_team_id)
         playbook_entry = self._resolve_playbook_entry(scp)
         assignment = self._resource_resolver.resolve_assignment_template(playbook_entry.assignment_template_id)
-        pre_snap = self._compile_matchups(scp, playbook_entry.play_id, assignment.template_id, offense, defense)
+        pre_snap = self._compile_matchups(scp, playbook_entry, assignment, offense, defense)
 
         contests, snapshots, transitions = self._run_phasal_rechecks(scp, pre_snap, offense, defense)
         penalties = self._resolve_penalties(scp, offense, defense, contests)
-        play_result = self._resolve_play_result(scp, offense, defense, contests, penalties)
-        rules = self._adjudicate(scp, offense, defense, play_result, penalties)
+        terminal = self._resolve_terminal_outcome(scp, offense, defense, contests, penalties)
+        rules = self._adjudicate(scp, offense, defense, terminal)
+        play_result = PlayResult(
+            play_id=terminal.play_id,
+            yards=terminal.yards,
+            new_spot=terminal.new_spot,
+            turnover=terminal.turnover,
+            turnover_type=terminal.turnover_type,
+            score_event=rules.score_event,
+            penalties=rules.penalties,
+            clock_delta=rules.clock_delta,
+            next_down=rules.next_down,
+            next_distance=rules.next_distance,
+            next_possession_team_id=rules.next_possession_team_id,
+        )
         reps = self._build_rep_ledger(scp, pre_snap, contests)
         causality = self._build_causality(play_result, reps, contests)
         for rep in reps:
@@ -121,19 +149,7 @@ class FootballResolver:
             )
 
         bundle = SnapArtifactBundle(
-            play_result=PlayResult(
-                play_id=play_result.play_id,
-                yards=play_result.yards,
-                new_spot=play_result.new_spot,
-                turnover=play_result.turnover,
-                turnover_type=play_result.turnover_type,
-                score_event=rules.score_event,
-                penalties=rules.penalties,
-                clock_delta=rules.clock_delta,
-                next_down=rules.next_down,
-                next_distance=rules.next_distance,
-                next_possession_team_id=rules.next_possession_team_id,
-            ),
+            play_result=play_result,
             pre_snap_plan=pre_snap,
             matchup_snapshots=snapshots,
             phase_transitions=transitions,
@@ -159,64 +175,82 @@ class FootballResolver:
 
     def _resolve_playbook_entry(self, scp: SnapContextPackage):
         if scp.intent.playbook_entry_id:
-            return self._resource_resolver.resolve_playbook_entry(scp.intent.playbook_entry_id)
-        for play_id in self._resource_resolver.playbook_ids():
-            entry = self._resource_resolver.resolve_playbook_entry(play_id)
-            if entry.play_type == scp.intent.play_type and entry.personnel_id == scp.intent.personnel and entry.formation_id == scp.intent.formation and entry.offensive_concept_id == scp.intent.offensive_concept and entry.defensive_concept_id == scp.intent.defensive_concept:
-                return entry
-        return PlaybookEntry(
-            play_id=f"derived_{scp.intent.play_type.value}_{scp.intent.offensive_concept}_{scp.intent.defensive_concept}",
-            play_type=scp.intent.play_type,
-            family=f"{scp.intent.play_type.value}_derived",
-            personnel_id=scp.intent.personnel,
-            formation_id=scp.intent.formation,
-            offensive_concept_id=scp.intent.offensive_concept,
-            defensive_concept_id=scp.intent.defensive_concept,
-            assignment_template_id=self._default_template_for_play_type(scp.intent.play_type),
-            branch_trigger_ids=[],
-            tags=["derived_intent"],
-        )
-
-    def _default_template_for_play_type(self, play_type: PlayType) -> str:
-        if play_type in {PlayType.RUN, PlayType.PASS, PlayType.TWO_POINT}:
-            return "scrimmage_base"
-        if play_type == PlayType.PUNT:
-            return "punt_base"
-        if play_type == PlayType.KICKOFF:
-            return "kickoff_base"
-        return "field_goal_base"
-
-    def _compile_matchups(self, scp: SnapContextPackage, playbook_entry_id: str, assignment_template_id: str, offense: str, defense: str) -> PreSnapMatchupPlan:
-        off = [p for p in scp.participants if p.team_id == offense]
-        deff = [p for p in scp.participants if p.team_id == defense]
-        if len(off) != 11 or len(deff) != 11:
-            raise ValueError("matchup compile requires 11v11 participants")
-        edges = []
-        for idx, (oa, da) in enumerate(zip(off, deff), start=1):
-            edges.append(
-                MatchupEdge(
-                    edge_id=make_id("edge"),
-                    offense_actor_id=oa.actor_id,
-                    defense_actor_id=da.actor_id,
-                    offense_role=oa.role,
-                    defense_role=da.role,
-                    technique="balanced",
-                    leverage="neutral",
-                    responsibility_weight=round(1.0 / 11.0, 6),
-                    context_tags=[f"pair:{idx}"],
-                )
+            try:
+                return self._resource_resolver.resolve_playbook_entry(scp.intent.playbook_entry_id)
+            except ValidationError as exc:
+                raise EngineIntegrityError(
+                    build_forensic_artifact(
+                        engine_scope="football",
+                        error_code="PLAYBOOK_INTENT_UNRESOLVABLE",
+                        message="explicit playbook_entry_id failed to resolve",
+                        state_snapshot={
+                            "game_id": scp.game_id,
+                            "play_id": scp.play_id,
+                            "playbook_entry_id": scp.intent.playbook_entry_id,
+                        },
+                        context={"issues": [asdict(i) for i in exc.issues]},
+                        identifiers={"game_id": scp.game_id, "play_id": scp.play_id},
+                        causal_fragment=["intent_resolution", "playbook_lookup"],
+                    )
+                ) from exc
+        try:
+            return self._resource_resolver.resolve_playbook_entry_for_intent(
+                play_type=scp.intent.play_type,
+                personnel_id=scp.intent.personnel,
+                formation_id=scp.intent.formation,
+                offensive_concept_id=scp.intent.offensive_concept,
+                defensive_concept_id=scp.intent.defensive_concept,
             )
-        edges[0].responsibility_weight = round(edges[0].responsibility_weight + (1.0 - sum(e.responsibility_weight for e in edges)), 6)
-        return PreSnapMatchupPlan(
-            plan_id=make_id("plan"),
-            play_id=scp.play_id,
-            playbook_entry_id=playbook_entry_id,
-            assignment_template_id=assignment_template_id,
-            offense_team_id=offense,
-            defense_team_id=defense,
-            graph=MatchupGraph(graph_id=make_id("graph"), play_id=scp.play_id, phase="pre_snap_compile", edges=edges),
-            warnings=[],
-        )
+        except ValidationError as exc:
+            raise EngineIntegrityError(
+                build_forensic_artifact(
+                    engine_scope="football",
+                    error_code="PLAYBOOK_INTENT_UNRESOLVABLE",
+                    message="unable to resolve playbook entry for snap intent",
+                    state_snapshot={
+                        "game_id": scp.game_id,
+                        "play_id": scp.play_id,
+                        "play_type": scp.intent.play_type.value,
+                    },
+                    context={"issues": [asdict(i) for i in exc.issues]},
+                    identifiers={"game_id": scp.game_id, "play_id": scp.play_id},
+                    causal_fragment=["intent_resolution", "playbook_lookup"],
+                )
+            ) from exc
+
+    def _compile_matchups(
+        self,
+        scp: SnapContextPackage,
+        playbook_entry: PlaybookEntry,
+        assignment_template: AssignmentTemplate,
+        offense: str,
+        defense: str,
+    ) -> PreSnapMatchupPlan:
+        try:
+            return self._matchup_compiler.compile(
+                play_id=scp.play_id,
+                playbook_entry_id=playbook_entry.play_id,
+                assignment_template=assignment_template,
+                offense_team_id=offense,
+                defense_team_id=defense,
+                participants=scp.participants,
+            )
+        except MatchupCompileError as exc:
+            raise EngineIntegrityError(
+                build_forensic_artifact(
+                    engine_scope="football",
+                    error_code="MATCHUP_COMPILE_INCOMPLETE",
+                    message=str(exc),
+                    state_snapshot={
+                        "game_id": scp.game_id,
+                        "play_id": scp.play_id,
+                        "assignment_template_id": assignment_template.template_id,
+                    },
+                    context={"playbook_entry_id": playbook_entry.play_id},
+                    identifiers={"game_id": scp.game_id, "play_id": scp.play_id},
+                    causal_fragment=["pre_snap_compile", "matchup_graph"],
+                )
+            ) from exc
 
     def _run_phasal_rechecks(
         self,
@@ -310,14 +344,14 @@ class FootballResolver:
             penalties.append(PenaltyArtifact(code="HOLD", against_team_id=offense, yards=10, enforcement_rationale="blocker reached while losing leverage"))
         return penalties
 
-    def _resolve_play_result(
+    def _resolve_terminal_outcome(
         self,
         scp: SnapContextPackage,
         offense: str,
         defense: str,
         contests: list[ContestResolution],
         penalties: list[PenaltyArtifact],
-    ) -> PlayResult:
+    ) -> _TerminalOutcome:
         rand = self._random_from_scp(scp).spawn("terminal")
         profile = self._outcome_profiles[scp.intent.play_type.value]
         by_family = {c.family: c for c in contests}
@@ -371,18 +405,18 @@ class FootballResolver:
             score_event = "FG_GOOD" if scp.intent.play_type == PlayType.FIELD_GOAL and made else "FG_MISS" if scp.intent.play_type == PlayType.FIELD_GOAL else "XP_GOOD" if made else "XP_MISS"
         for penalty in penalties:
             yards += penalty.yards if penalty.against_team_id != offense else -penalty.yards
-        return PlayResult(
+        new_spot = max(1, min(99, scp.situation.yard_line + yards))
+        if scp.intent.play_type in {PlayType.RUN, PlayType.PASS} and not turnover and new_spot >= 99:
+            score_event = "OFF_TD"
+        return _TerminalOutcome(
             play_id=scp.play_id,
             yards=yards,
-            new_spot=max(1, min(99, scp.situation.yard_line + yards)),
+            new_spot=new_spot,
             turnover=turnover,
             turnover_type=turnover_type,
             score_event=score_event,
             penalties=penalties,
             clock_delta=self._clock_delta(scp),
-            next_down=scp.situation.down,
-            next_distance=scp.situation.distance,
-            next_possession_team_id=offense,
         )
 
     def _adjudicate(
@@ -390,38 +424,67 @@ class FootballResolver:
         scp: SnapContextPackage,
         offense: str,
         defense: str,
-        play_result: PlayResult,
-        penalties: list[PenaltyArtifact],
+        terminal: _TerminalOutcome,
     ) -> RulesAdjudicationResult:
-        if play_result.score_event in {"FG_GOOD", "XP_GOOD", "TWO_PT_GOOD", "PUNT_RETURN_TD", "KICK_RETURN_TD"}:
+        score_event = terminal.score_event
+        if score_event in {"OFF_TD", "PUNT_RETURN_TD", "KICK_RETURN_TD"}:
             next_possession, next_down, next_distance = defense, 1, 10
-            notes = ["scoring event"]
-        elif play_result.turnover:
+            notes = ["touchdown scored"]
+        elif score_event in {"FG_GOOD", "FG_MISS", "XP_GOOD", "XP_MISS", "TWO_PT_GOOD", "TWO_PT_FAIL"}:
             next_possession, next_down, next_distance = defense, 1, 10
-            notes = [f"turnover {play_result.turnover_type}"]
+            notes = [f"conversion/kick attempt result: {score_event}"]
+        elif terminal.turnover:
+            next_possession, next_down, next_distance = defense, 1, 10
+            notes = [f"turnover {terminal.turnover_type}"]
         else:
-            remaining = scp.situation.distance - play_result.yards
-            next_down, next_distance = (1, 10) if remaining <= 0 else (min(4, scp.situation.down + 1), max(1, remaining))
-            next_possession = offense
-            notes = ["normal progression"]
+            remaining = scp.situation.distance - terminal.yards
+            if remaining <= 0:
+                next_down, next_distance = 1, 10
+                next_possession = offense
+                notes = ["first down achieved"]
+            elif scp.situation.down >= 4:
+                next_down, next_distance = 1, 10
+                next_possession = defense
+                notes = ["turnover on downs"]
+            else:
+                next_down, next_distance = scp.situation.down + 1, max(1, remaining)
+                next_possession = offense
+                notes = ["normal progression"]
         return RulesAdjudicationResult(
-            penalties=penalties,
-            score_event=play_result.score_event,
+            penalties=terminal.penalties,
+            score_event=score_event,
             enforcement_notes=notes,
             next_down=next_down,
             next_distance=next_distance,
             next_possession_team_id=next_possession,
-            clock_delta=play_result.clock_delta,
+            clock_delta=terminal.clock_delta,
         )
 
     def _build_rep_ledger(self, scp: SnapContextPackage, pre_snap: PreSnapMatchupPlan, contests: list[ContestResolution]) -> list[RepLedgerEntry]:
         reps: list[RepLedgerEntry] = []
+        participant_by_id = {p.actor_id: p for p in scp.participants}
         for contest in contests:
-            edges = pre_snap.graph.edges[:3]
-            actors = []
-            for edge in edges:
-                actors.append(RepActor(edge.offense_actor_id, pre_snap.offense_team_id, edge.offense_role, edge.technique))
-                actors.append(RepActor(edge.defense_actor_id, pre_snap.defense_team_id, edge.defense_role, edge.technique))
+            ranked_actor_ids = sorted(
+                contest.contributor_trace.keys(),
+                key=lambda aid: abs(contest.contributor_trace.get(aid, 0.0)),
+                reverse=True,
+            )
+            selected_ids = ranked_actor_ids[:6]
+            actors: list[RepActor] = []
+            for actor_id in selected_ids:
+                actor = participant_by_id.get(actor_id)
+                if actor is None:
+                    continue
+                actors.append(
+                    RepActor(
+                        actor_id=actor.actor_id,
+                        team_id=actor.team_id,
+                        role=actor.role,
+                        assignment_tag=self._assignment_tag_for_actor(pre_snap, actor.actor_id),
+                    )
+                )
+            if not actors:
+                continue
             reps.append(
                 RepLedgerEntry(
                     rep_id=make_id("rep"),
@@ -431,33 +494,12 @@ class FootballResolver:
                     actors=actors,
                     assignment_tags=[pre_snap.assignment_template_id, contest.family],
                     outcome_tags=[f"contest_score:{contest.score:.4f}"],
-                    responsibility_weights=self._weight_map(actors),
+                    responsibility_weights=self._contributor_weight_map(actors, contest.contributor_trace),
                     context_tags=[scp.intent.play_type.value, scp.intent.formation, scp.intent.personnel],
                     evidence_handles=contest.evidence_handles,
                 )
             )
-        reps.append(
-            RepLedgerEntry(
-                rep_id=make_id("rep"),
-                play_id=scp.play_id,
-                phase="branch_resolution",
-                rep_type="multi_actor_exchange",
-                actors=[
-                    RepActor(pre_snap.graph.edges[0].offense_actor_id, pre_snap.offense_team_id, pre_snap.graph.edges[0].offense_role, "combo_primary"),
-                    RepActor(pre_snap.graph.edges[1].offense_actor_id, pre_snap.offense_team_id, pre_snap.graph.edges[1].offense_role, "combo_help"),
-                    RepActor(pre_snap.graph.edges[0].defense_actor_id, pre_snap.defense_team_id, pre_snap.graph.edges[0].defense_role, "target_defender"),
-                ],
-                assignment_tags=["double_team", "bracket", "chip_release", "stunt_exchange"],
-                outcome_tags=["pursuit_convergence"],
-                responsibility_weights={
-                    pre_snap.graph.edges[0].offense_actor_id: 0.4,
-                    pre_snap.graph.edges[1].offense_actor_id: 0.25,
-                    pre_snap.graph.edges[0].defense_actor_id: 0.35,
-                },
-                context_tags=["multi_actor"],
-                evidence_handles=[pre_snap.plan_id],
-            )
-        )
+        reps.extend(self._build_group_reps(scp, pre_snap, participant_by_id))
         return reps
 
     def _build_causality(self, play_result: PlayResult, reps: list[RepLedgerEntry], contests: list[ContestResolution]) -> CausalityChain:
@@ -471,7 +513,7 @@ class FootballResolver:
             else "negative_play"
             if play_result.yards < 0
             else "first_down"
-            if play_result.yards >= play_result.next_distance
+            if play_result.next_down == 1 and not play_result.turnover and play_result.score_event is None
             else "normal_play"
         )
         nodes = [CausalityNode("contest", c.contest_id, 0.0, f"{c.family} in {c.phase}") for c in sorted(contests, key=lambda x: abs(x.score - 0.5), reverse=True)[:3]]
@@ -492,7 +534,76 @@ class FootballResolver:
         out[ids[0]] = round(out[ids[0]] + (1.0 - sum(out.values())), 6)
         return out
 
+    def _contributor_weight_map(self, actors: list[RepActor], contributor_trace: dict[str, float]) -> dict[str, float]:
+        ids = list(dict.fromkeys(actor.actor_id for actor in actors))
+        abs_scores = {actor_id: abs(float(contributor_trace.get(actor_id, 0.0))) for actor_id in ids}
+        total = sum(abs_scores.values())
+        if total <= 0.0:
+            return self._weight_map(actors)
+        weights = {actor_id: round(score / total, 6) for actor_id, score in abs_scores.items()}
+        first = ids[0]
+        weights[first] = round(weights[first] + (1.0 - sum(weights.values())), 6)
+        return weights
+
+    def _assignment_tag_for_actor(self, pre_snap: PreSnapMatchupPlan, actor_id: str) -> str:
+        for edge in pre_snap.graph.edges:
+            if edge.offense_actor_id == actor_id or edge.defense_actor_id == actor_id:
+                return edge.technique
+        return "involved"
+
+    def _build_group_reps(
+        self,
+        scp: SnapContextPackage,
+        pre_snap: PreSnapMatchupPlan,
+        participant_by_id: dict[str, ActorRef],
+    ) -> list[RepLedgerEntry]:
+        grouped: dict[str, list[MatchupEdge]] = {}
+        for edge in pre_snap.graph.edges:
+            for tag in edge.context_tags:
+                if tag.startswith("group:"):
+                    grouped.setdefault(tag, []).append(edge)
+        reps: list[RepLedgerEntry] = []
+        for group_id, edges in grouped.items():
+            group_name = group_id.split(":")[1]
+            actor_ids: list[str] = []
+            for edge in edges:
+                actor_ids.append(edge.offense_actor_id)
+                actor_ids.append(edge.defense_actor_id)
+            actor_ids = list(dict.fromkeys(actor_ids))
+            actors: list[RepActor] = []
+            for actor_id in actor_ids:
+                actor = participant_by_id.get(actor_id)
+                if actor is None:
+                    continue
+                actors.append(
+                    RepActor(
+                        actor_id=actor.actor_id,
+                        team_id=actor.team_id,
+                        role=actor.role,
+                        assignment_tag=self._assignment_tag_for_actor(pre_snap, actor.actor_id),
+                    )
+                )
+            if len(actors) < 2:
+                continue
+            reps.append(
+                RepLedgerEntry(
+                    rep_id=make_id("rep"),
+                    play_id=scp.play_id,
+                    phase="branch_resolution",
+                    rep_type=group_name,
+                    actors=actors,
+                    assignment_tags=[pre_snap.assignment_template_id, group_name],
+                    outcome_tags=["group_interaction"],
+                    responsibility_weights=self._weight_map(actors),
+                    context_tags=["multi_actor", group_id],
+                    evidence_handles=[pre_snap.plan_id, f"group:{group_id}"],
+                )
+            )
+        return reps
+
     def _score_delta(self, score_event: str | None, offense: str, defense: str) -> dict[str, int]:
+        if score_event == "OFF_TD":
+            return {offense: 6}
         if score_event == "FG_GOOD":
             return {offense: 3}
         if score_event == "XP_GOOD":

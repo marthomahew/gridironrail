@@ -3,6 +3,8 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 
+import duckdb
+
 from grs.contracts import ActionRequest, ActionType
 from grs.core import make_id
 from grs.football import CalibrationService, FootballContractAuditor
@@ -15,6 +17,7 @@ def test_football_contract_audit_matrix_runs() -> None:
     assert report.checks
     assert any(check.check_id == "mode_invariance" for check in report.checks)
     assert all(isinstance(check.passed, bool) for check in report.checks)
+    assert report.passed
 
 
 def test_calibration_service_profiles_exposed() -> None:
@@ -63,6 +66,22 @@ def test_runtime_dev_calibration_action_with_audit_stamp(tmp_path: Path) -> None
     assert audit.success
     assert audit.data["checks"]
 
+    exported = runtime.handle_action(
+        ActionRequest(make_id("req"), ActionType.EXPORT_CALIBRATION_REPORT, {}, "T01")
+    )
+    assert exported.success
+    assert exported.data["exported_files"]
+    assert "dev_calibration_runs" in exported.data["row_counts"]
+    assert "dev_calibration_terminal_distribution" in exported.data["row_counts"]
+    files = [Path(p) for p in exported.data["exported_files"]]
+    csv_files = [p for p in files if p.suffix == ".csv"]
+    with duckdb.connect() as conn:
+        for csv_path in csv_files:
+            parquet_path = csv_path.with_suffix(".parquet")
+            csv_count = conn.execute(f"SELECT COUNT(*) FROM read_csv_auto('{csv_path.as_posix()}')").fetchone()[0]
+            parquet_count = conn.execute(f"SELECT COUNT(*) FROM parquet_scan('{parquet_path.as_posix()}')").fetchone()[0]
+            assert csv_count == parquet_count
+
     with runtime.store.connect() as conn:
         dev_events = conn.execute("SELECT COUNT(*) FROM narrative_events WHERE scope = 'dev'").fetchone()[0]
     assert dev_events >= 3
@@ -71,3 +90,12 @@ def test_runtime_dev_calibration_action_with_audit_stamp(tmp_path: Path) -> None
 def test_calibration_profiles_do_not_leak_into_session_runtime() -> None:
     source = inspect.getsource(GameSessionEngine)
     assert "CalibrationTraitProfile" not in source
+
+
+def test_runtime_export_calibration_requires_dev_mode(tmp_path: Path) -> None:
+    runtime = DynastyRuntime(root=tmp_path, seed=9, dev_mode=False)
+    blocked = runtime.handle_action(
+        ActionRequest(make_id("req"), ActionType.EXPORT_CALIBRATION_REPORT, {}, "T01")
+    )
+    assert not blocked.success
+    assert "dev mode required" in blocked.message

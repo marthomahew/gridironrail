@@ -121,6 +121,7 @@ class PreSimValidator:
             formation=scp.intent.formation,
             offensive_concept=scp.intent.offensive_concept,
             defensive_concept=scp.intent.defensive_concept,
+            playbook_entry_id=scp.intent.playbook_entry_id,
             tempo=scp.intent.tempo,
             aggression=scp.intent.aggression,
             play_type=scp.intent.play_type,
@@ -297,6 +298,27 @@ class PreSimValidator:
                 )
         except ValidationError as exc:
             issues.extend(exc.issues)
+        if not issues:
+            try:
+                resolved = self._resource_resolver.resolve_playbook_entry_for_intent(
+                    play_type=playcall.play_type,
+                    personnel_id=playcall.personnel,
+                    formation_id=playcall.formation,
+                    offensive_concept_id=playcall.offensive_concept,
+                    defensive_concept_id=playcall.defensive_concept,
+                )
+                if playcall.playbook_entry_id and playcall.playbook_entry_id != resolved.play_id:
+                    issues.append(
+                        ValidationIssue(
+                            code="PLAYBOOK_INTENT_UNRESOLVABLE",
+                            severity="blocking",
+                            field_path="playcall.playbook_entry_id",
+                            entity_id=playcall.team_id,
+                            message=f"playbook '{playcall.playbook_entry_id}' does not match resolved intent '{resolved.play_id}'",
+                        )
+                    )
+            except ValidationError as exc:
+                issues.extend(exc.issues)
         return issues
 
     def _validate_situation(self, scp: SnapContextPackage) -> list[ValidationIssue]:

@@ -49,6 +49,27 @@ def test_pre_sim_rejects_missing_formation_id(tmp_path: Path):
     assert "pre-sim gate" in result.message
 
 
+def test_pre_sim_rejects_unresolvable_playbook_intent(tmp_path: Path):
+    runtime = DynastyRuntime(root=tmp_path, seed=1011)
+    result = runtime.handle_action(
+        ActionRequest(
+            make_id("req"),
+            ActionType.SET_PLAYCALL,
+            {
+                "personnel": "11",
+                "formation": "gun_trips",
+                "offensive_concept": "spacing",
+                "defensive_concept": "cover2",
+                "play_type": "pass",
+            },
+            "T01",
+        )
+    )
+    assert not result.success
+    issues = result.data.get("issues", [])
+    assert any(issue.get("code") == "PLAYBOOK_INTENT_UNRESOLVABLE" for issue in issues)
+
+
 def test_pre_sim_hard_fails_incomplete_depth_chart(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=102)
     team = next(t for t in runtime.org_state.teams if t.team_id == "T01")

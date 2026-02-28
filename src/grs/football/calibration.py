@@ -113,6 +113,17 @@ class CalibrationService:
             )
             conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS dev_calibration_terminal_distribution (
+                    run_id VARCHAR NOT NULL,
+                    terminal_event VARCHAR NOT NULL,
+                    event_count INTEGER NOT NULL,
+                    event_rate DOUBLE NOT NULL,
+                    PRIMARY KEY (run_id, terminal_event)
+                )
+                """
+            )
+            conn.execute(
+                """
                 INSERT OR REPLACE INTO dev_calibration_runs(
                     run_id, play_type, sample_count, trait_profile, tuning_profile_id,
                     mean_yards, turnover_rate, score_rate, penalty_rate, terminal_distribution_json, seed
@@ -132,6 +143,81 @@ class CalibrationService:
                     result.seed,
                 ],
             )
+            conn.execute(
+                "DELETE FROM dev_calibration_terminal_distribution WHERE run_id = ?",
+                [result.run_id],
+            )
+            rows = [
+                (
+                    result.run_id,
+                    terminal_event,
+                    count,
+                    (count / result.sample_count),
+                )
+                for terminal_event, count in sorted(result.terminal_distribution.items())
+            ]
+            if rows:
+                conn.executemany(
+                    """
+                    INSERT INTO dev_calibration_terminal_distribution(
+                        run_id, terminal_event, event_count, event_rate
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    rows,
+                )
+
+    def export_reports(self, duckdb_path: Path, output_dir: Path) -> tuple[list[Path], dict[str, int]]:
+        try:
+            import duckdb
+        except ModuleNotFoundError as exc:  # pragma: no cover
+            raise RuntimeError("duckdb is required for calibration export") from exc
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stems = {
+            "dev_calibration_runs": output_dir / "dev_calibration_runs",
+            "dev_calibration_terminal_distribution": output_dir / "dev_calibration_terminal_distribution",
+        }
+        outputs: list[Path] = []
+        row_counts: dict[str, int] = {}
+        with duckdb.connect(str(duckdb_path)) as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dev_calibration_runs (
+                    run_id VARCHAR PRIMARY KEY,
+                    play_type VARCHAR,
+                    sample_count INTEGER,
+                    trait_profile VARCHAR,
+                    tuning_profile_id VARCHAR,
+                    mean_yards DOUBLE,
+                    turnover_rate DOUBLE,
+                    score_rate DOUBLE,
+                    penalty_rate DOUBLE,
+                    terminal_distribution_json VARCHAR,
+                    seed BIGINT,
+                    persisted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS dev_calibration_terminal_distribution (
+                    run_id VARCHAR NOT NULL,
+                    terminal_event VARCHAR NOT NULL,
+                    event_count INTEGER NOT NULL,
+                    event_rate DOUBLE NOT NULL,
+                    PRIMARY KEY (run_id, terminal_event)
+                )
+                """
+            )
+            for table, stem in stems.items():
+                count_row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+                row_counts[table] = int(count_row[0]) if count_row is not None else 0
+                csv_path = stem.with_suffix(".csv")
+                parquet_path = stem.with_suffix(".parquet")
+                conn.execute(f"COPY (SELECT * FROM {table}) TO '{csv_path.as_posix()}' (HEADER, DELIMITER ',')")
+                conn.execute(f"COPY (SELECT * FROM {table}) TO '{parquet_path.as_posix()}' (FORMAT PARQUET)")
+                outputs.extend([csv_path, parquet_path])
+        return outputs, row_counts
 
     def _build_tuned_resolver(self, tuning: TuningProfile) -> ResourceResolver:
         payload = self._load_trait_influence_payload()

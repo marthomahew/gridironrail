@@ -279,6 +279,28 @@ class DynastyRuntime:
                 },
             )
 
+        if action == ActionType.EXPORT_CALIBRATION_REPORT:
+            if not self.dev_mode:
+                return ActionResult(request.request_id, False, "dev mode required for calibration export actions")
+            outputs, row_counts = self.calibration.export_reports(
+                duckdb_path=self.paths.duckdb_path,
+                output_dir=self.paths.export_dir / "dev_calibration",
+            )
+            self._emit_dev_event(
+                event_type="calibration_report_exported",
+                claims=[f"exported calibration report files={len(outputs)}"],
+                evidence_handles=[f"calibration_export:{p.name}" for p in outputs],
+            )
+            return ActionResult(
+                request.request_id,
+                True,
+                "calibration report exported",
+                data={
+                    "exported_files": [str(p) for p in outputs],
+                    "row_counts": row_counts,
+                },
+            )
+
         if action in {ActionType.PLAY_USER_GAME, ActionType.PLAY_SNAP, ActionType.SIM_DRIVE}:
             game_result = self._simulate_user_game(mode=SimMode.PLAY if action != ActionType.SIM_DRIVE else SimMode.SIM)
             return ActionResult(

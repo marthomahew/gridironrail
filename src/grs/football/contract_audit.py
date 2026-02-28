@@ -111,13 +111,23 @@ class FootballContractAuditor:
                     evidence=f"contests={len(result.artifact_bundle.contest_resolutions)} reps={len(result.rep_ledger)}",
                 )
             )
-            if play_type in {PlayType.PUNT, PlayType.KICKOFF, PlayType.FIELD_GOAL, PlayType.EXTRA_POINT, PlayType.TWO_POINT}:
+            if play_type in {PlayType.PUNT, PlayType.KICKOFF, PlayType.FIELD_GOAL, PlayType.EXTRA_POINT}:
                 families = {c.family for c in result.artifact_bundle.contest_resolutions}
                 checks.append(
                     ContractAuditCheck(
                         check_id=f"{play_type.value}_special_teams_contests",
                         description=f"{play_type.value} traverses special-teams contest path.",
                         passed=bool({"kick_quality", "block_pressure"} & families),
+                        evidence=f"families={sorted(families)}",
+                    )
+                )
+            if play_type == PlayType.TWO_POINT:
+                families = {c.family for c in result.artifact_bundle.contest_resolutions}
+                checks.append(
+                    ContractAuditCheck(
+                        check_id="two_point_scrimmage_contests",
+                        description="two_point traverses scrimmage conversion contest path.",
+                        passed={"pressure_emergence", "separation_window", "decision_risk", "catch_point_contest", "ball_security"}.issubset(families) and "kick_quality" not in families,
                         evidence=f"families={sorted(families)}",
                     )
                 )

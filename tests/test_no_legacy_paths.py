@@ -14,3 +14,9 @@ def test_legacy_trait_weight_flag_removed_from_resolver_api():
 def test_runtime_no_longer_reads_legacy_trait_weight_env_flag():
     source = inspect.getsource(DynastyRuntime.__init__)
     assert "GRS_TRAIT_WEIGHTED" not in source
+
+
+def test_resolver_has_no_derived_intent_fallback_path():
+    source = inspect.getsource(FootballResolver._resolve_playbook_entry)
+    assert "derived_intent" not in source
+    assert "_default_template_for_play_type" not in inspect.getsource(FootballResolver)

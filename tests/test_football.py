@@ -9,10 +9,12 @@ from grs.org import build_default_league
 
 def build_context(play_id: str, mode: SimMode = SimMode.PLAY) -> SnapContextPackage:
     participants = []
-    for i in range(11):
-        participants.append(ActorRef(actor_id=f"A_O_{i}", team_id="A", role=f"O{i}"))
-    for i in range(11):
-        participants.append(ActorRef(actor_id=f"B_D_{i}", team_id="B", role=f"D{i}"))
+    offense_roles = ["QB", "RB", "WR", "WR", "WR", "TE", "OL", "OL", "OL", "OL", "OL"]
+    defense_roles = ["DE", "DT", "DT", "DE", "LB", "LB", "LB", "CB", "CB", "S", "S"]
+    for i, role in enumerate(offense_roles):
+        participants.append(ActorRef(actor_id=f"A_O_{i}", team_id="A", role=role))
+    for i, role in enumerate(defense_roles):
+        participants.append(ActorRef(actor_id=f"B_D_{i}", team_id="B", role=role))
     states = {
         p.actor_id: InGameState(fatigue=0.3, acute_wear=0.2, confidence_tilt=0.0, discipline_risk=0.5)
         for p in participants
@@ -110,3 +112,32 @@ def test_game_session_completes_with_real_lineups():
     assert result.final_state.completed
     assert len(result.snaps) > 0
     assert result.home_score >= 0 and result.away_score >= 0
+
+
+def test_session_scoring_requires_explicit_score_event():
+    league = build_default_league(team_count=2)
+    home = league.teams[0]
+    away = league.teams[1]
+    engine = GameSessionEngine(FootballEngine(FootballResolver(seeded_random(5))))
+    state = GameSessionState(
+        game_id="S2026_W1_G99",
+        season=2026,
+        week=1,
+        home_team_id=home.team_id,
+        away_team_id=away.team_id,
+        quarter=1,
+        clock_seconds=300,
+        home_score=0,
+        away_score=0,
+        possession_team_id=home.team_id,
+        down=1,
+        distance=1,
+        yard_line=99,
+        drive_index=1,
+        timeouts_home=3,
+        timeouts_away=3,
+    )
+    engine._apply_score(state, None, home.team_id, away.team_id)
+    assert state.home_score == 0
+    engine._apply_score(state, "OFF_TD", home.team_id, away.team_id)
+    assert state.home_score == 6

@@ -25,8 +25,10 @@ def test_engine_hard_stop_on_invalid_state():
 
 
 def test_force_outcome_dev_mode():
-    participants = [ActorRef(actor_id=f"A{i}", team_id="A", role="O") for i in range(11)] + [
-        ActorRef(actor_id=f"B{i}", team_id="B", role="D") for i in range(11)
+    offense_roles = ["QB", "RB", "WR", "WR", "WR", "TE", "OL", "OL", "OL", "OL", "OL"]
+    defense_roles = ["DE", "DT", "DT", "DE", "LB", "LB", "LB", "CB", "CB", "S", "S"]
+    participants = [ActorRef(actor_id=f"A{i}", team_id="A", role=role) for i, role in enumerate(offense_roles)] + [
+        ActorRef(actor_id=f"B{i}", team_id="B", role=role) for i, role in enumerate(defense_roles)
     ]
     states = {p.actor_id: InGameState(0.2, 0.2, 0.0, discipline_risk=0.3) for p in participants}
     traits = {p.actor_id: {code: 58.0 for code in required_trait_codes()} for p in participants}
@@ -38,7 +40,7 @@ def test_force_outcome_dev_mode():
         participants=participants,
         in_game_states=states,
         trait_vectors=traits,
-        intent=ParameterizedIntent("11", "gun_trips", "spacing", "cover2", play_type=PlayType.PASS),
+        intent=ParameterizedIntent("11", "gun_trips", "spacing", "cover3_match", play_type=PlayType.PASS),
     )
 
     engine = FootballEngine(FootballResolver(seeded_random(77)))
@@ -48,8 +50,10 @@ def test_force_outcome_dev_mode():
 
 
 def test_force_outcome_not_available_without_dev_mode():
-    participants = [ActorRef(actor_id=f"A{i}", team_id="A", role="O") for i in range(11)] + [
-        ActorRef(actor_id=f"B{i}", team_id="B", role="D") for i in range(11)
+    offense_roles = ["QB", "RB", "WR", "WR", "WR", "TE", "OL", "OL", "OL", "OL", "OL"]
+    defense_roles = ["DE", "DT", "DT", "DE", "LB", "LB", "LB", "CB", "CB", "S", "S"]
+    participants = [ActorRef(actor_id=f"A{i}", team_id="A", role=role) for i, role in enumerate(offense_roles)] + [
+        ActorRef(actor_id=f"B{i}", team_id="B", role=role) for i, role in enumerate(defense_roles)
     ]
     states = {p.actor_id: InGameState(0.2, 0.2, 0.0, discipline_risk=0.3) for p in participants}
     traits = {p.actor_id: {code: 58.0 for code in required_trait_codes()} for p in participants}
@@ -61,7 +65,7 @@ def test_force_outcome_not_available_without_dev_mode():
         participants=participants,
         in_game_states=states,
         trait_vectors=traits,
-        intent=ParameterizedIntent("11", "gun_trips", "spacing", "cover2", play_type=PlayType.PASS),
+        intent=ParameterizedIntent("11", "gun_trips", "spacing", "cover3_match", play_type=PlayType.PASS),
     )
     engine = FootballEngine(FootballResolver(seeded_random(77)))
     with pytest.raises(ValueError):

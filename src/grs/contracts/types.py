@@ -47,6 +47,7 @@ class ActionType(str, Enum):
     SET_TUNING_PROFILE = "set_tuning_profile"
     GET_TUNING_PROFILES = "get_tuning_profiles"
     RUN_FOOTBALL_AUDIT = "run_football_audit"
+    EXPORT_CALIBRATION_REPORT = "export_calibration_report"
 
 
 class TraitStatus(str, Enum):
@@ -769,6 +770,16 @@ class RegistryRepository(Protocol):
     def resolve_policy(self, policy_id: str) -> dict[str, Any]: ...
 
     def resolve_playbook_entry(self, play_id: str) -> PlaybookEntry: ...
+
+    def resolve_playbook_entry_for_intent(
+        self,
+        *,
+        play_type: PlayType,
+        personnel_id: str,
+        formation_id: str,
+        offensive_concept_id: str,
+        defensive_concept_id: str,
+    ) -> PlaybookEntry: ...
 
     def resolve_assignment_template(self, template_id: str) -> AssignmentTemplate: ...
 

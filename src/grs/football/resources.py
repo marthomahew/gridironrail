@@ -88,6 +88,34 @@ class ResourceResolver:
             tags=[str(v) for v in raw.get("tags", [])],
         )
 
+    def resolve_playbook_entry_for_intent(
+        self,
+        *,
+        play_type: PlayType,
+        personnel_id: str,
+        formation_id: str,
+        offensive_concept_id: str,
+        defensive_concept_id: str,
+    ) -> PlaybookEntry:
+        for play_id in self.playbook_ids():
+            entry = self.resolve_playbook_entry(play_id)
+            if (
+                entry.play_type == play_type
+                and entry.personnel_id == personnel_id
+                and entry.formation_id == formation_id
+                and entry.offensive_concept_id == offensive_concept_id
+                and entry.defensive_concept_id == defensive_concept_id
+            ):
+                return entry
+        issue = ValidationIssue(
+            code="PLAYBOOK_INTENT_UNRESOLVABLE",
+            severity="blocking",
+            field_path="playcall",
+            entity_id=f"{play_type.value}:{personnel_id}:{formation_id}:{offensive_concept_id}:{defensive_concept_id}",
+            message="no playbook entry matches playcall intent",
+        )
+        raise ValidationError([issue])
+
     def resolve_assignment_template(self, template_id: str) -> AssignmentTemplate:
         raw = self._resolve(self._assignment_templates, template_id, "UNKNOWN_ASSIGNMENT_TEMPLATE")
         return AssignmentTemplate(
