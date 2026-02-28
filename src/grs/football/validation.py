@@ -15,6 +15,7 @@ from grs.contracts import (
     ValidationIssue,
     ValidationResult,
 )
+from grs.football.contest import parse_influence_profiles, required_influence_families
 from grs.football.resources import ResourceResolver
 from grs.football.traits import canonical_trait_catalog, validate_traits
 from grs.org.entities import Franchise, Player
@@ -34,6 +35,7 @@ class PreSimValidator:
         self._resource_resolver = resource_resolver or ResourceResolver()
         self._trait_catalog = list(trait_catalog or canonical_trait_catalog())
         self._required_traits = {t.trait_code for t in self._trait_catalog if t.required}
+        self._validate_trait_influence_resources()
 
     def validate_game_input(
         self,
@@ -123,22 +125,7 @@ class PreSimValidator:
             play_type=scp.intent.play_type,
         )
         issues.extend(self._validate_playcall_fields(playcall))
-
-        if player_lookup is not None:
-            for participant in scp.participants:
-                player = player_lookup.get(participant.actor_id)
-                if player is None:
-                    issues.append(
-                        ValidationIssue(
-                            code="PARTICIPANT_NOT_ON_ROSTER",
-                            severity="blocking",
-                            field_path="participants",
-                            entity_id=participant.actor_id,
-                            message="participant is not present in provided roster lookup",
-                        )
-                    )
-                    continue
-                issues.extend(validate_traits(player.player_id, player.traits, self._trait_catalog))
+        issues.extend(self._validate_snap_traits(scp, player_lookup))
 
         return self._finalize(issues)
 
@@ -361,6 +348,119 @@ class PreSimValidator:
                     )
                 )
         return issues
+
+    def _validate_snap_traits(
+        self,
+        scp: SnapContextPackage,
+        player_lookup: dict[str, Player] | None,
+    ) -> list[ValidationIssue]:
+        issues: list[ValidationIssue] = []
+        for participant in scp.participants:
+            traits = scp.trait_vectors.get(participant.actor_id)
+            if traits is None:
+                issues.append(
+                    ValidationIssue(
+                        code="MISSING_PARTICIPANT_TRAITS",
+                        severity="blocking",
+                        field_path="trait_vectors",
+                        entity_id=participant.actor_id,
+                        message="participant missing trait vector in snap context",
+                    )
+                )
+                continue
+            issues.extend(validate_traits(participant.actor_id, traits, self._trait_catalog))
+            if player_lookup is not None:
+                player = player_lookup.get(participant.actor_id)
+                if player is None:
+                    issues.append(
+                        ValidationIssue(
+                            code="PARTICIPANT_NOT_ON_ROSTER",
+                            severity="blocking",
+                            field_path="participants",
+                            entity_id=participant.actor_id,
+                            message="participant is not present in provided roster lookup",
+                        )
+                    )
+                    continue
+                if traits != player.traits:
+                    issues.append(
+                        ValidationIssue(
+                            code="TRAIT_VECTOR_MISMATCH",
+                            severity="blocking",
+                            field_path="trait_vectors",
+                            entity_id=participant.actor_id,
+                            message="snap trait vector does not match authoritative player traits",
+                        )
+                    )
+        return issues
+
+    def _validate_trait_influence_resources(self) -> None:
+        issues: list[ValidationIssue] = []
+        trait_codes = {t.trait_code for t in self._trait_catalog}
+        for play_type in ["run", "pass", "punt", "kickoff", "field_goal", "extra_point", "two_point"]:
+            try:
+                resource = self._resource_resolver.resolve_trait_influence(play_type)
+            except ValidationError as exc:
+                issues.extend(exc.issues)
+                continue
+            try:
+                by_family, outcome = parse_influence_profiles(resource)
+                required = required_influence_families(play_type)
+                missing_families = required - set(by_family.keys())
+                if missing_families:
+                    issues.append(
+                        ValidationIssue(
+                            code="MISSING_INFLUENCE_FAMILY",
+                            severity="blocking",
+                            field_path=f"trait_influences.{play_type}.families",
+                            entity_id=play_type,
+                            message=f"missing required families: {sorted(missing_families)}",
+                        )
+                    )
+                for family_name, profile in by_family.items():
+                    for trait_code in set(profile.offense_weights) | set(profile.defense_weights):
+                        if trait_code not in trait_codes:
+                            issues.append(
+                                ValidationIssue(
+                                    code="UNKNOWN_INFLUENCE_TRAIT",
+                                    severity="blocking",
+                                    field_path=f"trait_influences.{play_type}.{family_name}",
+                                    entity_id=play_type,
+                                    message=f"unknown trait code '{trait_code}' in influence profile",
+                                )
+                            )
+                    if not profile.offense_weights or not profile.defense_weights:
+                        issues.append(
+                            ValidationIssue(
+                                code="INVALID_INFLUENCE_WEIGHTS",
+                                severity="blocking",
+                                field_path=f"trait_influences.{play_type}.{family_name}",
+                                entity_id=play_type,
+                                message="offense_weights and defense_weights must be non-empty",
+                            )
+                        )
+                if outcome.clock_delta_min < 1 or outcome.clock_delta_max < outcome.clock_delta_min:
+                    issues.append(
+                        ValidationIssue(
+                            code="INVALID_OUTCOME_PROFILE_CLOCK",
+                            severity="blocking",
+                            field_path=f"trait_influences.{play_type}.outcome_profile",
+                            entity_id=play_type,
+                            message="invalid clock delta bounds",
+                        )
+                    )
+            except ValueError as exc:
+                issues.append(
+                    ValidationIssue(
+                        code="INVALID_INFLUENCE_PROFILE",
+                        severity="blocking",
+                        field_path=f"trait_influences.{play_type}",
+                        entity_id=play_type,
+                        message=str(exc),
+                    )
+                )
+        if issues:
+            raise ValidationError(issues)
 
     def debug_snapshot(self) -> dict[str, object]:
         return {

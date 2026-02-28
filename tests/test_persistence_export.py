@@ -75,6 +75,10 @@ def test_export_csv_parquet_row_count_parity(tmp_path: Path):
     with duckdb.connect() as conn:
         for csv_path in csv_files:
             parquet_path = csv_path.with_suffix(".parquet")
-            csv_count = conn.execute(f"SELECT COUNT(*) FROM read_csv_auto('{csv_path.as_posix()}')").fetchone()[0]
-            parquet_count = conn.execute(f"SELECT COUNT(*) FROM parquet_scan('{parquet_path.as_posix()}')").fetchone()[0]
+            csv_row = conn.execute(f"SELECT COUNT(*) FROM read_csv_auto('{csv_path.as_posix()}')").fetchone()
+            parquet_row = conn.execute(f"SELECT COUNT(*) FROM parquet_scan('{parquet_path.as_posix()}')").fetchone()
+            assert csv_row is not None
+            assert parquet_row is not None
+            csv_count = csv_row[0]
+            parquet_count = parquet_row[0]
             assert csv_count == parquet_count

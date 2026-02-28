@@ -23,7 +23,7 @@ from grs.football.models import GameSessionResult, SnapResolution
 from grs.football.resources import ResourceResolver
 from grs.football.resolver import FootballEngine
 from grs.football.validation import PreSimValidator
-from grs.org.entities import Franchise
+from grs.org.entities import Franchise, Player
 
 PlaycallProvider = Callable[[GameSessionState, str, str], PlaycallRequest]
 
@@ -31,6 +31,10 @@ PlaycallProvider = Callable[[GameSessionState, str, str], PlaycallRequest]
 class GameSessionEngine:
     OFFENSE_SLOTS = ["QB1", "RB1", "WR1", "WR2", "WR3", "TE1", "LT", "LG", "C", "RG", "RT"]
     DEFENSE_SLOTS = ["DE1", "DT1", "DT2", "DE2", "LB1", "LB2", "LB3", "CB1", "CB2", "S1", "S2"]
+    PUNT_OFFENSE_SLOTS = ["P", "LT", "LG", "C", "RG", "RT", "TE1", "WR1", "WR2", "CB1", "S1"]
+    FIELD_GOAL_OFFENSE_SLOTS = ["K", "LT", "LG", "C", "RG", "RT", "TE1", "LB1", "LB2", "DE1", "DE2"]
+    KICKOFF_OFFENSE_SLOTS = ["K", "LB1", "LB2", "LB3", "CB1", "CB2", "S1", "S2", "DE1", "DE2", "WR1"]
+    KICKOFF_RETURN_SLOTS = ["RB1", "WR1", "WR2", "WR3", "TE1", "LB1", "LB2", "CB1", "S1", "S2", "DE1"]
 
     def __init__(
         self,
@@ -84,7 +88,7 @@ class GameSessionEngine:
                     phase="playcall_validation",
                 ) from exc
 
-            participants = self._participants(offense_team, defense_team)
+            participants = self._participants(offense_team, defense_team, call.play_type)
             in_game_states = self._in_game_states(participants, fatigue, state.active_injuries)
 
             scp = SnapContextPackage(
@@ -104,6 +108,10 @@ class GameSessionEngine:
                 ),
                 participants=participants,
                 in_game_states=in_game_states,
+                trait_vectors={
+                    participant.actor_id: dict(player_lookup[participant.actor_id].traits)
+                    for participant in participants
+                },
                 intent=ParameterizedIntent(
                     personnel=call.personnel,
                     formation=call.formation,
@@ -141,7 +149,7 @@ class GameSessionEngine:
             )
 
             state.active_penalties.extend(resolution.play_result.penalties)
-            self._update_injuries(state, resolution)
+            self._update_injuries(state, resolution, player_lookup)
             self._apply_resolution_to_state(state, resolution, offense_team.team_id, defense_team.team_id)
 
             for actor_id in in_game_states:
@@ -165,10 +173,26 @@ class GameSessionEngine:
             action_stream=action_stream,
         )
 
-    def _participants(self, offense_team: Franchise, defense_team: Franchise) -> list[ActorRef]:
-        offense = self._resolve_side(offense_team, self.OFFENSE_SLOTS)
-        defense = self._resolve_side(defense_team, self.DEFENSE_SLOTS)
+    def _participants(self, offense_team: Franchise, defense_team: Franchise, play_type: PlayType) -> list[ActorRef]:
+        offense_slots = self._offense_slots_for_play_type(play_type)
+        defense_slots = self._defense_slots_for_play_type(play_type)
+        offense = self._resolve_side(offense_team, offense_slots)
+        defense = self._resolve_side(defense_team, defense_slots)
         return offense + defense
+
+    def _offense_slots_for_play_type(self, play_type: PlayType) -> list[str]:
+        if play_type == PlayType.PUNT:
+            return self.PUNT_OFFENSE_SLOTS
+        if play_type in {PlayType.FIELD_GOAL, PlayType.EXTRA_POINT}:
+            return self.FIELD_GOAL_OFFENSE_SLOTS
+        if play_type == PlayType.KICKOFF:
+            return self.KICKOFF_OFFENSE_SLOTS
+        return self.OFFENSE_SLOTS
+
+    def _defense_slots_for_play_type(self, play_type: PlayType) -> list[str]:
+        if play_type == PlayType.KICKOFF:
+            return self.KICKOFF_RETURN_SLOTS
+        return self.DEFENSE_SLOTS
 
     def _resolve_side(self, team: Franchise, slots: list[str]) -> list[ActorRef]:
         by_id = {p.player_id: p for p in team.roster}
@@ -321,14 +345,41 @@ class GameSessionEngine:
         else:
             state.away_score += points
 
-    def _update_injuries(self, state: GameSessionState, resolution: SnapResolution) -> None:
+    def _update_injuries(
+        self,
+        state: GameSessionState,
+        resolution: SnapResolution,
+        player_lookup: dict[str, Player],
+    ) -> None:
+        collision_scores: dict[str, float] = {}
+        for contest in resolution.contest_outputs:
+            if contest.family not in {"tackle_finish", "return_vision_convergence", "catch_point_contest"}:
+                continue
+            for actor_id, contribution in contest.actor_contributions.items():
+                collision_scores[actor_id] = collision_scores.get(actor_id, 0.0) + abs(contribution)
+
         for rep in resolution.rep_ledger:
             if rep.rep_type not in {"tackle", "pursuit", "contest", "run_fit"}:
                 continue
-            key = f"{resolution.play_result.play_id}:{rep.rep_type}:{rep.actors[0].actor_id}".encode("ascii", "ignore")
-            injury_roll = int(hashlib.sha256(key).hexdigest()[:8], 16) % 1000
-            if injury_roll < 4:
-                actor_id = rep.actors[0].actor_id
+            actor_id = rep.actors[0].actor_id
+            player = player_lookup.get(actor_id)
+            if player is None:
+                continue
+            traits = getattr(player, "traits", {})
+            contact_risk = float(traits.get("contact_injury_risk", 50.0))
+            soft_tissue_risk = float(traits.get("soft_tissue_risk", 50.0))
+            durability = float(traits.get("durability", 50.0))
+            collision = collision_scores.get(actor_id, 0.15)
+            normalized_risk = (
+                ((contact_risk - 1.0) / 98.0) * 0.55
+                + ((soft_tissue_risk - 1.0) / 98.0) * 0.25
+                + collision * 0.3
+                + (1.0 - ((durability - 1.0) / 98.0)) * 0.2
+            )
+            key = f"{resolution.play_result.play_id}:{rep.rep_type}:{actor_id}".encode("ascii", "ignore")
+            jitter = (int(hashlib.sha256(key).hexdigest()[:8], 16) / 0xFFFFFFFF) * 0.03
+            injury_prob = normalized_risk * 0.02 + jitter
+            if injury_prob > 0.018:
                 state.active_injuries[actor_id] = "limited"
 
     def _required_policy_key(self, posture_cfg: dict[str, str], key: str) -> str:

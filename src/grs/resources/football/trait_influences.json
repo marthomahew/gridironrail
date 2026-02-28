@@ -1,0 +1,630 @@
+{
+  "manifest": {
+    "resource_type": "trait_influence_profile",
+    "schema_version": "1.0",
+    "resource_version": "1.0.0",
+    "generated_at": "2026-02-28T00:00:00Z",
+    "checksum": "c40ac759b25780a1c55b2ed1cc6dd58ba1a9736e51e00200db476971cf20135c"
+  },
+  "resources": [
+    {
+      "id": "run",
+      "families": [
+        {
+          "family": "lane_creation",
+          "offense_weights": {
+            "run_block_drive": 0.28,
+            "run_block_positioning": 0.22,
+            "combo_coordination": 0.2,
+            "leverage_control": 0.15,
+            "strength": 0.15
+          },
+          "defense_weights": {
+            "gap_integrity": 0.3,
+            "block_shed": 0.25,
+            "stack_shed": 0.2,
+            "tackle_form": 0.15,
+            "discipline": 0.1
+          },
+          "fatigue_sensitivity": 0.25,
+          "wear_sensitivity": 0.2
+        },
+        {
+          "family": "fit_integrity",
+          "offense_weights": {
+            "pursuit_angles": 0.22,
+            "body_control": 0.2,
+            "yac_vision": 0.28,
+            "balance": 0.15,
+            "agility": 0.15
+          },
+          "defense_weights": {
+            "gap_integrity": 0.25,
+            "pursuit_angles": 0.2,
+            "closing_speed": 0.2,
+            "tackle_form": 0.2,
+            "recognition": 0.15
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.2
+        },
+        {
+          "family": "tackle_finish",
+          "offense_weights": {
+            "balance": 0.2,
+            "strength": 0.2,
+            "body_control": 0.2,
+            "momentum_management": 0.2,
+            "pain_tolerance": 0.2
+          },
+          "defense_weights": {
+            "tackle_power": 0.35,
+            "tackle_form": 0.25,
+            "closing_speed": 0.15,
+            "block_shed": 0.15,
+            "discipline": 0.1
+          },
+          "fatigue_sensitivity": 0.25,
+          "wear_sensitivity": 0.25
+        },
+        {
+          "family": "ball_security",
+          "offense_weights": {
+            "ball_security": 0.4,
+            "hands": 0.2,
+            "composure": 0.2,
+            "balance": 0.1,
+            "pain_tolerance": 0.1
+          },
+          "defense_weights": {
+            "tackle_power": 0.3,
+            "tackle_form": 0.2,
+            "hand_fighting": 0.2,
+            "block_shed": 0.15,
+            "closing_speed": 0.15
+          },
+          "fatigue_sensitivity": 0.3,
+          "wear_sensitivity": 0.3
+        }
+      ],
+      "outcome_profile": {
+        "noise_scale": 0.32,
+        "explosive_threshold": 12,
+        "turnover_scale": 0.09,
+        "score_scale": 1.0,
+        "clock_delta_min": 4,
+        "clock_delta_max": 14
+      }
+    },
+    {
+      "id": "pass",
+      "families": [
+        {
+          "family": "pressure_emergence",
+          "offense_weights": {
+            "pass_set": 0.25,
+            "mirror_skill": 0.2,
+            "anchor": 0.2,
+            "recovery_blocking": 0.2,
+            "communication": 0.15
+          },
+          "defense_weights": {
+            "get_off": 0.24,
+            "hand_fighting": 0.2,
+            "rush_plan_diversity": 0.2,
+            "closing_speed": 0.16,
+            "edge_contain": 0.2
+          },
+          "fatigue_sensitivity": 0.25,
+          "wear_sensitivity": 0.2
+        },
+        {
+          "family": "separation_window",
+          "offense_weights": {
+            "route_fidelity": 0.25,
+            "release_quality": 0.2,
+            "agility": 0.15,
+            "anticipation": 0.15,
+            "acceleration": 0.25
+          },
+          "defense_weights": {
+            "man_footwork": 0.25,
+            "leverage_management": 0.2,
+            "transition_speed": 0.2,
+            "route_match_skill": 0.2,
+            "recovery_speed": 0.15
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.15
+        },
+        {
+          "family": "decision_risk",
+          "offense_weights": {
+            "decision_quality": 0.25,
+            "processing_speed": 0.2,
+            "pocket_sense": 0.15,
+            "timing_precision": 0.2,
+            "composure": 0.2
+          },
+          "defense_weights": {
+            "recognition": 0.2,
+            "anticipation": 0.2,
+            "communication_secondary": 0.2,
+            "ball_skills_defense": 0.2,
+            "route_match_skill": 0.2
+          },
+          "fatigue_sensitivity": 0.15,
+          "wear_sensitivity": 0.1
+        },
+        {
+          "family": "catch_point_contest",
+          "offense_weights": {
+            "hands": 0.25,
+            "catch_radius": 0.2,
+            "contested_catch": 0.2,
+            "ball_tracking": 0.2,
+            "body_control": 0.15
+          },
+          "defense_weights": {
+            "ball_skills_defense": 0.25,
+            "leverage_management": 0.2,
+            "recovery_speed": 0.2,
+            "press_technique": 0.15,
+            "dpi_risk_control": 0.2
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.15
+        },
+        {
+          "family": "yac_continuation",
+          "offense_weights": {
+            "yac_vision": 0.3,
+            "agility": 0.2,
+            "balance": 0.2,
+            "acceleration": 0.15,
+            "momentum_management": 0.15
+          },
+          "defense_weights": {
+            "closing_speed": 0.25,
+            "tackle_form": 0.25,
+            "pursuit_angles": 0.2,
+            "tackle_power": 0.15,
+            "discipline": 0.15
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.2
+        },
+        {
+          "family": "ball_security",
+          "offense_weights": {
+            "ball_security": 0.45,
+            "hands": 0.2,
+            "composure": 0.15,
+            "pain_tolerance": 0.1,
+            "balance": 0.1
+          },
+          "defense_weights": {
+            "tackle_power": 0.3,
+            "closing_speed": 0.2,
+            "hand_fighting": 0.2,
+            "tackle_form": 0.15,
+            "block_shed": 0.15
+          },
+          "fatigue_sensitivity": 0.3,
+          "wear_sensitivity": 0.25
+        }
+      ],
+      "outcome_profile": {
+        "noise_scale": 0.35,
+        "explosive_threshold": 20,
+        "turnover_scale": 0.08,
+        "score_scale": 1.0,
+        "clock_delta_min": 4,
+        "clock_delta_max": 15
+      }
+    },
+    {
+      "id": "punt",
+      "families": [
+        {
+          "family": "kick_quality",
+          "offense_weights": {
+            "throw_power": 0.35,
+            "timing_precision": 0.2,
+            "composure": 0.15,
+            "balance": 0.15,
+            "stamina": 0.15
+          },
+          "defense_weights": {
+            "get_off": 0.2,
+            "closing_speed": 0.2,
+            "rush_plan_diversity": 0.2,
+            "hand_fighting": 0.2,
+            "discipline": 0.2
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.15
+        },
+        {
+          "family": "block_pressure",
+          "offense_weights": {
+            "pass_set": 0.25,
+            "anchor": 0.25,
+            "hand_placement": 0.2,
+            "communication": 0.15,
+            "discipline": 0.15
+          },
+          "defense_weights": {
+            "get_off": 0.25,
+            "hand_fighting": 0.2,
+            "closing_speed": 0.2,
+            "rush_plan_diversity": 0.2,
+            "anticipation": 0.15
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.15
+        },
+        {
+          "family": "coverage_lane_integrity",
+          "offense_weights": {
+            "pursuit_angles": 0.25,
+            "discipline": 0.25,
+            "closing_speed": 0.2,
+            "stamina": 0.15,
+            "communication": 0.15
+          },
+          "defense_weights": {
+            "yac_vision": 0.3,
+            "agility": 0.2,
+            "acceleration": 0.2,
+            "balance": 0.15,
+            "body_control": 0.15
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.2
+        },
+        {
+          "family": "return_vision_convergence",
+          "offense_weights": {
+            "yac_vision": 0.3,
+            "agility": 0.2,
+            "acceleration": 0.2,
+            "balance": 0.15,
+            "momentum_management": 0.15
+          },
+          "defense_weights": {
+            "pursuit_angles": 0.25,
+            "closing_speed": 0.2,
+            "tackle_form": 0.2,
+            "discipline": 0.2,
+            "stack_shed": 0.15
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.2
+        }
+      ],
+      "outcome_profile": {
+        "noise_scale": 0.3,
+        "explosive_threshold": 18,
+        "turnover_scale": 0.05,
+        "score_scale": 1.0,
+        "clock_delta_min": 6,
+        "clock_delta_max": 14
+      }
+    },
+    {
+      "id": "kickoff",
+      "families": [
+        {
+          "family": "kick_quality",
+          "offense_weights": {
+            "throw_power": 0.35,
+            "timing_precision": 0.2,
+            "composure": 0.15,
+            "balance": 0.15,
+            "stamina": 0.15
+          },
+          "defense_weights": {
+            "yac_vision": 0.3,
+            "agility": 0.2,
+            "acceleration": 0.2,
+            "balance": 0.15,
+            "body_control": 0.15
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.15
+        },
+        {
+          "family": "block_pressure",
+          "offense_weights": {
+            "discipline": 0.25,
+            "communication": 0.2,
+            "stamina": 0.2,
+            "closing_speed": 0.2,
+            "pursuit_angles": 0.15
+          },
+          "defense_weights": {
+            "hand_fighting": 0.2,
+            "closing_speed": 0.2,
+            "discipline": 0.2,
+            "agility": 0.2,
+            "strength": 0.2
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.15
+        },
+        {
+          "family": "coverage_lane_integrity",
+          "offense_weights": {
+            "pursuit_angles": 0.25,
+            "discipline": 0.25,
+            "closing_speed": 0.2,
+            "stamina": 0.15,
+            "communication": 0.15
+          },
+          "defense_weights": {
+            "yac_vision": 0.3,
+            "agility": 0.2,
+            "acceleration": 0.2,
+            "balance": 0.15,
+            "body_control": 0.15
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.2
+        },
+        {
+          "family": "return_vision_convergence",
+          "offense_weights": {
+            "yac_vision": 0.3,
+            "agility": 0.2,
+            "acceleration": 0.2,
+            "balance": 0.15,
+            "momentum_management": 0.15
+          },
+          "defense_weights": {
+            "pursuit_angles": 0.25,
+            "closing_speed": 0.2,
+            "tackle_form": 0.2,
+            "discipline": 0.2,
+            "stack_shed": 0.15
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.2
+        }
+      ],
+      "outcome_profile": {
+        "noise_scale": 0.28,
+        "explosive_threshold": 20,
+        "turnover_scale": 0.04,
+        "score_scale": 1.0,
+        "clock_delta_min": 5,
+        "clock_delta_max": 13
+      }
+    },
+    {
+      "id": "field_goal",
+      "families": [
+        {
+          "family": "kick_quality",
+          "offense_weights": {
+            "throw_power": 0.4,
+            "timing_precision": 0.25,
+            "composure": 0.2,
+            "balance": 0.15
+          },
+          "defense_weights": {
+            "get_off": 0.25,
+            "closing_speed": 0.25,
+            "burst": 0.25,
+            "hand_fighting": 0.25
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.1
+        },
+        {
+          "family": "block_pressure",
+          "offense_weights": {
+            "anchor": 0.25,
+            "pass_set": 0.25,
+            "discipline": 0.2,
+            "communication": 0.15,
+            "strength": 0.15
+          },
+          "defense_weights": {
+            "get_off": 0.25,
+            "closing_speed": 0.25,
+            "hand_fighting": 0.2,
+            "anticipation": 0.15,
+            "burst": 0.15
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.1
+        }
+      ],
+      "outcome_profile": {
+        "noise_scale": 0.2,
+        "explosive_threshold": 0,
+        "turnover_scale": 0.0,
+        "score_scale": 1.0,
+        "clock_delta_min": 4,
+        "clock_delta_max": 8
+      }
+    },
+    {
+      "id": "extra_point",
+      "families": [
+        {
+          "family": "kick_quality",
+          "offense_weights": {
+            "throw_power": 0.35,
+            "timing_precision": 0.3,
+            "composure": 0.2,
+            "balance": 0.15
+          },
+          "defense_weights": {
+            "get_off": 0.25,
+            "closing_speed": 0.25,
+            "burst": 0.25,
+            "hand_fighting": 0.25
+          },
+          "fatigue_sensitivity": 0.15,
+          "wear_sensitivity": 0.1
+        },
+        {
+          "family": "block_pressure",
+          "offense_weights": {
+            "anchor": 0.25,
+            "pass_set": 0.25,
+            "discipline": 0.2,
+            "communication": 0.15,
+            "strength": 0.15
+          },
+          "defense_weights": {
+            "get_off": 0.25,
+            "closing_speed": 0.25,
+            "hand_fighting": 0.2,
+            "anticipation": 0.15,
+            "burst": 0.15
+          },
+          "fatigue_sensitivity": 0.15,
+          "wear_sensitivity": 0.1
+        }
+      ],
+      "outcome_profile": {
+        "noise_scale": 0.18,
+        "explosive_threshold": 0,
+        "turnover_scale": 0.0,
+        "score_scale": 1.0,
+        "clock_delta_min": 4,
+        "clock_delta_max": 7
+      }
+    },
+    {
+      "id": "two_point",
+      "families": [
+        {
+          "family": "pressure_emergence",
+          "offense_weights": {
+            "pass_set": 0.25,
+            "mirror_skill": 0.2,
+            "anchor": 0.2,
+            "recovery_blocking": 0.2,
+            "communication": 0.15
+          },
+          "defense_weights": {
+            "get_off": 0.24,
+            "hand_fighting": 0.2,
+            "rush_plan_diversity": 0.2,
+            "closing_speed": 0.16,
+            "edge_contain": 0.2
+          },
+          "fatigue_sensitivity": 0.25,
+          "wear_sensitivity": 0.2
+        },
+        {
+          "family": "separation_window",
+          "offense_weights": {
+            "route_fidelity": 0.25,
+            "release_quality": 0.2,
+            "agility": 0.15,
+            "anticipation": 0.15,
+            "acceleration": 0.25
+          },
+          "defense_weights": {
+            "man_footwork": 0.25,
+            "leverage_management": 0.2,
+            "transition_speed": 0.2,
+            "route_match_skill": 0.2,
+            "recovery_speed": 0.15
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.15
+        },
+        {
+          "family": "decision_risk",
+          "offense_weights": {
+            "decision_quality": 0.25,
+            "processing_speed": 0.2,
+            "pocket_sense": 0.15,
+            "timing_precision": 0.2,
+            "composure": 0.2
+          },
+          "defense_weights": {
+            "recognition": 0.2,
+            "anticipation": 0.2,
+            "communication_secondary": 0.2,
+            "ball_skills_defense": 0.2,
+            "route_match_skill": 0.2
+          },
+          "fatigue_sensitivity": 0.15,
+          "wear_sensitivity": 0.1
+        },
+        {
+          "family": "catch_point_contest",
+          "offense_weights": {
+            "hands": 0.25,
+            "catch_radius": 0.2,
+            "contested_catch": 0.2,
+            "ball_tracking": 0.2,
+            "body_control": 0.15
+          },
+          "defense_weights": {
+            "ball_skills_defense": 0.25,
+            "leverage_management": 0.2,
+            "recovery_speed": 0.2,
+            "press_technique": 0.15,
+            "dpi_risk_control": 0.2
+          },
+          "fatigue_sensitivity": 0.2,
+          "wear_sensitivity": 0.15
+        },
+        {
+          "family": "tackle_finish",
+          "offense_weights": {
+            "balance": 0.2,
+            "strength": 0.2,
+            "body_control": 0.2,
+            "momentum_management": 0.2,
+            "pain_tolerance": 0.2
+          },
+          "defense_weights": {
+            "tackle_power": 0.35,
+            "tackle_form": 0.25,
+            "closing_speed": 0.15,
+            "block_shed": 0.15,
+            "discipline": 0.1
+          },
+          "fatigue_sensitivity": 0.25,
+          "wear_sensitivity": 0.2
+        },
+        {
+          "family": "ball_security",
+          "offense_weights": {
+            "ball_security": 0.45,
+            "hands": 0.2,
+            "composure": 0.15,
+            "pain_tolerance": 0.1,
+            "balance": 0.1
+          },
+          "defense_weights": {
+            "tackle_power": 0.3,
+            "closing_speed": 0.2,
+            "hand_fighting": 0.2,
+            "tackle_form": 0.15,
+            "block_shed": 0.15
+          },
+          "fatigue_sensitivity": 0.3,
+          "wear_sensitivity": 0.25
+        }
+      ],
+      "outcome_profile": {
+        "noise_scale": 0.24,
+        "explosive_threshold": 0,
+        "turnover_scale": 0.07,
+        "score_scale": 1.0,
+        "clock_delta_min": 4,
+        "clock_delta_max": 8
+      }
+    }
+  ]
+}

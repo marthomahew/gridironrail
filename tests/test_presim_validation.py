@@ -9,7 +9,7 @@ import pytest
 
 from grs.contracts import ActionRequest, ActionType, ValidationError
 from grs.core import make_id
-from grs.football import ResourceResolver
+from grs.football import PreSimValidator, ResourceResolver
 from grs.simulation import DynastyRuntime
 
 
@@ -118,6 +118,38 @@ def test_resource_loader_rejects_referential_integrity_break():
     assert any(issue.code == "FORMATION_PERSONNEL_REF_MISSING" for issue in ex.value.issues)
 
 
+def test_trait_influence_loader_rejects_checksum_mismatch():
+    influences = _resource_payload("trait_influences.json")
+    influences["manifest"]["checksum"] = "invalid_checksum"
+    with pytest.raises(ValidationError) as ex:
+        ResourceResolver(bundle_overrides={"trait_influences.json": influences})
+    assert any(issue.code == "RESOURCE_CHECKSUM_MISMATCH" for issue in ex.value.issues)
+
+
+def test_trait_influence_profile_rejects_missing_required_family():
+    influences = _resource_payload("trait_influences.json")
+    run_profile = next(resource for resource in influences["resources"] if resource["id"] == "run")
+    run_profile["families"] = [f for f in run_profile["families"] if f["family"] != "ball_security"]
+    influences["manifest"]["checksum"] = _checksum(influences["resources"])
+
+    with pytest.raises(ValidationError) as ex:
+        resolver = ResourceResolver(bundle_overrides={"trait_influences.json": influences})
+        PreSimValidator(resource_resolver=resolver)
+    assert any(issue.code == "MISSING_INFLUENCE_FAMILY" for issue in ex.value.issues)
+
+
+def test_trait_influence_profile_rejects_unknown_trait_code():
+    influences = _resource_payload("trait_influences.json")
+    pass_profile = next(resource for resource in influences["resources"] if resource["id"] == "pass")
+    pass_profile["families"][0]["offense_weights"]["not_a_trait"] = 0.1
+    influences["manifest"]["checksum"] = _checksum(influences["resources"])
+
+    with pytest.raises(ValidationError) as ex:
+        resolver = ResourceResolver(bundle_overrides={"trait_influences.json": influences})
+        PreSimValidator(resource_resolver=resolver)
+    assert any(issue.code == "UNKNOWN_INFLUENCE_TRAIT" for issue in ex.value.issues)
+
+
 def test_active_players_have_complete_90_trait_vectors(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=106)
     team = next(t for t in runtime.org_state.teams if t.team_id == "T01")
@@ -136,4 +168,3 @@ def test_batch_hard_fails_if_any_scheduled_game_invalid(tmp_path: Path):
     assert not result.success
     assert runtime.halted
     assert Path(result.data["forensic_path"]).exists()
-

@@ -119,6 +119,7 @@ class SnapContextPackage:
     participants: list[ActorRef]
     in_game_states: dict[str, InGameState]
     intent: ParameterizedIntent
+    trait_vectors: dict[str, dict[str, float]] = field(default_factory=dict)
     weather_flags: list[str] = field(default_factory=list)
 
 
@@ -406,6 +407,80 @@ class ResourceManifest:
     resource_version: str
     generated_at: str
     checksum: str
+
+
+@dataclass(slots=True)
+class TraitInfluenceManifest:
+    resource_type: str
+    schema_version: str
+    resource_version: str
+    generated_at: str
+    checksum: str
+
+
+@dataclass(slots=True)
+class PlayFamilyInfluenceProfile:
+    play_type: str
+    family: str
+    offense_weights: dict[str, float]
+    defense_weights: dict[str, float]
+    fatigue_sensitivity: float
+    wear_sensitivity: float
+    context_modifiers: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class OutcomeResolutionProfile:
+    play_type: str
+    noise_scale: float
+    explosive_threshold: int
+    turnover_scale: float
+    score_scale: float
+    clock_delta_min: int
+    clock_delta_max: int
+    context_modifiers: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class ContestInput:
+    contest_id: str
+    play_id: str
+    play_type: str
+    family: str
+    offense_actor_ids: list[str]
+    defense_actor_ids: list[str]
+    influence_profile: PlayFamilyInfluenceProfile
+    situation: Situation
+    in_game_states: dict[str, InGameState]
+
+
+@dataclass(slots=True)
+class ContestOutput:
+    contest_id: str
+    play_id: str
+    play_type: str
+    family: str
+    score: float
+    offense_score: float
+    defense_score: float
+    actor_contributions: dict[str, float]
+    trait_contributions: dict[str, float]
+    variance_hint: float
+    evidence_handles: list[str]
+
+
+@dataclass(slots=True)
+class CausalityTemplate:
+    terminal_event_family: str
+    descriptions: list[str]
+
+
+@dataclass(slots=True)
+class ResolverEvidenceRef:
+    handle: str
+    source_type: str
+    source_id: str
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

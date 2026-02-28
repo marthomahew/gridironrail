@@ -3,6 +3,7 @@ from __future__ import annotations
 from grs.contracts import ActorRef, GameSessionState, InGameState, ParameterizedIntent, PlayType, SimMode, Situation, SnapContextPackage
 from grs.core import gameplay_random, seeded_random
 from grs.football import FootballEngine, FootballResolver, GameSessionEngine
+from grs.football.traits import required_trait_codes
 from grs.org import build_default_league
 
 
@@ -16,6 +17,7 @@ def build_context(play_id: str, mode: SimMode = SimMode.PLAY) -> SnapContextPack
         p.actor_id: InGameState(fatigue=0.3, acute_wear=0.2, confidence_tilt=0.0, discipline_risk=0.5)
         for p in participants
     }
+    trait_vectors = {p.actor_id: {code: 55.0 for code in required_trait_codes()} for p in participants}
     return SnapContextPackage(
         game_id="G1",
         play_id=play_id,
@@ -33,6 +35,7 @@ def build_context(play_id: str, mode: SimMode = SimMode.PLAY) -> SnapContextPack
         ),
         participants=participants,
         in_game_states=states,
+        trait_vectors=trait_vectors,
         intent=ParameterizedIntent(
             personnel="11",
             formation="gun_trips",

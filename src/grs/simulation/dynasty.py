@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -93,12 +94,17 @@ class DynastyRuntime:
         self.resource_resolver = ResourceResolver()
         self.pre_sim_validator = PreSimValidator(resource_resolver=self.resource_resolver)
         self.store.save_trait_catalog(self.pre_sim_validator.trait_catalog())
+        self.trait_weighted_enabled = os.getenv("GRS_TRAIT_WEIGHTED", "1") == "1"
 
         self.org_state: LeagueState = build_default_league(team_count=8)
         self.user_team_id = user_team_id
         self.org_engine = OrganizationalEngine(rand=self.rand.spawn("org"), difficulty=self.difficulty)
         self.football = FootballEngine(
-            FootballResolver(random_source=self.rand.spawn("football")),
+            FootballResolver(
+                random_source=self.rand.spawn("football"),
+                resource_resolver=self.resource_resolver,
+                trait_weighted_enabled=self.trait_weighted_enabled,
+            ),
             validator=self.pre_sim_validator,
         )
         self.game_session = GameSessionEngine(

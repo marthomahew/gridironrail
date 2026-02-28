@@ -5,6 +5,7 @@ import pytest
 from grs.contracts import ActorRef, InGameState, ParameterizedIntent, PlayType, SimMode, Situation, SnapContextPackage
 from grs.core import EngineIntegrityError, seeded_random
 from grs.football import FootballEngine, FootballResolver
+from grs.football.traits import required_trait_codes
 
 
 def test_engine_hard_stop_on_invalid_state():
@@ -28,6 +29,7 @@ def test_force_outcome_dev_mode():
         ActorRef(actor_id=f"B{i}", team_id="B", role="D") for i in range(11)
     ]
     states = {p.actor_id: InGameState(0.2, 0.2, 0.0, discipline_risk=0.3) for p in participants}
+    traits = {p.actor_id: {code: 58.0 for code in required_trait_codes()} for p in participants}
     scp = SnapContextPackage(
         game_id="G1",
         play_id="PFORCE",
@@ -35,6 +37,7 @@ def test_force_outcome_dev_mode():
         situation=Situation(2, 500, 2, 7, 50, "A", 0, 2, 2),
         participants=participants,
         in_game_states=states,
+        trait_vectors=traits,
         intent=ParameterizedIntent("11", "gun_trips", "spacing", "cover2", play_type=PlayType.PASS),
     )
 
@@ -49,6 +52,7 @@ def test_force_outcome_not_available_without_dev_mode():
         ActorRef(actor_id=f"B{i}", team_id="B", role="D") for i in range(11)
     ]
     states = {p.actor_id: InGameState(0.2, 0.2, 0.0, discipline_risk=0.3) for p in participants}
+    traits = {p.actor_id: {code: 58.0 for code in required_trait_codes()} for p in participants}
     scp = SnapContextPackage(
         game_id="G1",
         play_id="PFORCE2",
@@ -56,6 +60,7 @@ def test_force_outcome_not_available_without_dev_mode():
         situation=Situation(2, 500, 2, 7, 50, "A", 0, 2, 2),
         participants=participants,
         in_game_states=states,
+        trait_vectors=traits,
         intent=ParameterizedIntent("11", "gun_trips", "spacing", "cover2", play_type=PlayType.PASS),
     )
     engine = FootballEngine(FootballResolver(seeded_random(77)))

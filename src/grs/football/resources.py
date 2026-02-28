@@ -25,6 +25,7 @@ class ResourceResolver:
         self._offense = self._load_bundle("concepts_offense.json", "concept_offense")
         self._defense = self._load_bundle("concepts_defense.json", "concept_defense")
         self._policies = self._load_bundle("coaching_policies.json", "coaching_policy")
+        self._trait_influences = self._load_bundle("trait_influences.json", "trait_influence_profile")
         self._validate_cross_references()
 
     def resolve_personnel(self, personnel_id: str) -> dict[str, Any]:
@@ -43,6 +44,9 @@ class ResourceResolver:
     def resolve_policy(self, policy_id: str) -> dict[str, Any]:
         return self._resolve(self._policies, policy_id, "UNKNOWN_COACHING_POLICY")
 
+    def resolve_trait_influence(self, play_type: str) -> dict[str, Any]:
+        return self._resolve(self._trait_influences, play_type, "UNKNOWN_TRAIT_INFLUENCE_PLAYTYPE")
+
     def resource_manifests(self) -> list[ResourceManifest]:
         return [
             self._personnel.manifest,
@@ -50,6 +54,7 @@ class ResourceResolver:
             self._offense.manifest,
             self._defense.manifest,
             self._policies.manifest,
+            self._trait_influences.manifest,
         ]
 
     def personnel_ids(self) -> list[str]:
@@ -66,6 +71,9 @@ class ResourceResolver:
 
     def policy_ids(self) -> list[str]:
         return sorted(self._policies.resources_by_id.keys())
+
+    def trait_influence_play_types(self) -> list[str]:
+        return sorted(self._trait_influences.resources_by_id.keys())
 
     def _resolve(self, bundle: ResourceBundle, key: str, error_code: str) -> dict[str, Any]:
         if key not in bundle.resources_by_id:
