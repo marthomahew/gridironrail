@@ -45,9 +45,11 @@ class ActionType(str, Enum):
     SET_PLAYCALL = "set_playcall"
     RUN_CALIBRATION_BATCH = "run_calibration_batch"
     SET_TUNING_PROFILE = "set_tuning_profile"
+    PATCH_TUNING_PROFILE = "patch_tuning_profile"
     GET_TUNING_PROFILES = "get_tuning_profiles"
     RUN_FOOTBALL_AUDIT = "run_football_audit"
     EXPORT_CALIBRATION_REPORT = "export_calibration_report"
+    RUN_STRICT_AUDIT = "run_strict_audit"
 
 
 class TraitStatus(str, Enum):
@@ -110,7 +112,7 @@ class ParameterizedIntent:
     defensive_concept: str
     playbook_entry_id: str | None = None
     assignment_template_id: str | None = None
-    rules_profile_id: str = "nfl_placeholder_v1"
+    rules_profile_id: str = "nfl_standard_v1"
     tempo: str = "normal"
     aggression: str = "balanced"
     allows_audible: bool = True
@@ -703,7 +705,7 @@ class TeamGamePackage:
     depth_slots: dict[str, str]
     perceived_inputs: dict[str, float]
     coaching_policy_id: str
-    default_rules_profile_id: str = "nfl_placeholder_v1"
+    rules_profile_id: str
 
 
 @dataclass(slots=True)
@@ -713,6 +715,43 @@ class TuningProfile:
     family_weight_multipliers: dict[str, float] = field(default_factory=dict)
     outcome_multipliers: dict[str, float] = field(default_factory=dict)
     dev_only: bool = True
+
+
+@dataclass(slots=True)
+class CalibrationSessionRef:
+    session_id: str
+    created_at: datetime
+    actor_team_id: str
+    active_tuning_profile_id: str
+    seed: int | None = None
+
+
+@dataclass(slots=True)
+class BatchRunRequest:
+    play_type: PlayType
+    sample_count: int
+    trait_profile: CalibrationTraitProfile
+    seed: int | None = None
+
+
+@dataclass(slots=True)
+class BatchRunResult:
+    session: CalibrationSessionRef
+    run: CalibrationRunResult
+
+
+@dataclass(slots=True)
+class TuningPatchRequest:
+    profile_id: str
+    family_weight_multipliers: dict[str, float] = field(default_factory=dict)
+    outcome_multipliers: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class TuningPatchResult:
+    profile: TuningProfile
+    patched_at: datetime
+    actor_team_id: str
 
 
 @dataclass(slots=True)
@@ -760,6 +799,39 @@ class ContractAuditReport:
         return all(c.passed for c in self.checks)
 
 
+@dataclass(slots=True)
+class StrictAuditFinding:
+    finding_id: str
+    scope: str
+    severity: str
+    summary: str
+    location: str
+
+
+@dataclass(slots=True)
+class StrictAuditSection:
+    section: str
+    passed: bool
+    findings: list[StrictAuditFinding] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class StrictAuditReport:
+    report_id: str
+    generated_at: datetime
+    passed: bool
+    sections: list[StrictAuditSection]
+
+
+@dataclass(slots=True)
+class StrictExecutionPolicy:
+    allow_dataclass_default_factory: bool = True
+    forbid_runtime_rescue_defaults: bool = True
+    forbid_placeholder_resources: bool = True
+    forbid_runtime_clamps: bool = True
+    hard_fail_on_domain_violations: bool = True
+
+
 class RegistryRepository(Protocol):
     def resolve_personnel(self, personnel_id: str) -> dict[str, Any]: ...
 
@@ -797,3 +869,37 @@ class CoachDecisionEngine(Protocol):
         defense_package: TeamGamePackage,
         random_source: RandomSource,
     ) -> PlayIntentFrame: ...
+
+
+class DevCalibrationGateway(Protocol):
+    def list_tuning_profiles(self) -> list[TuningProfile]: ...
+
+    def active_profile(self) -> str: ...
+
+    def set_tuning_profile(self, profile_id: str) -> TuningProfile: ...
+
+    def patch_profile(self, request: TuningPatchRequest, actor_team_id: str) -> TuningPatchResult: ...
+
+    def run_batch(self, request: BatchRunRequest, actor_team_id: str) -> BatchRunResult: ...
+
+    def export_reports(self) -> tuple[list[str], dict[str, int]]: ...
+
+
+class CalibrationReadAdapter(Protocol):
+    def list_profiles(self) -> list[TuningProfile]: ...
+
+    def active_profile(self) -> str: ...
+
+
+class CalibrationWriteAdapter(Protocol):
+    def set_profile(self, profile_id: str) -> TuningPatchResult: ...
+
+    def patch_profile(self, request: TuningPatchRequest, actor_team_id: str) -> TuningPatchResult: ...
+
+
+class CalibrationRunAdapter(Protocol):
+    def run_batch(self, request: BatchRunRequest, actor_team_id: str) -> BatchRunResult: ...
+
+
+class CalibrationExportAdapter(Protocol):
+    def export_reports(self) -> tuple[list[str], dict[str, int]]: ...

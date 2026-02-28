@@ -59,10 +59,12 @@ class InjuryEvaluator:
                 if contest is None:
                     continue
                 # Mid/close contests imply higher collision probability.
-                intensity = max(0.1, 1.0 - abs(contest.score - 0.5))
+                proximity = 1.0 - (abs(contest.score - 0.5) * 2.0)
+                intensity = 0.1 + (0.9 * proximity)
             for actor in rep.actors:
                 current = candidates.get(actor.actor_id, 0.0)
-                candidates[actor.actor_id] = max(current, intensity)
+                if intensity > current:
+                    candidates[actor.actor_id] = intensity
         return candidates
 
     def _norm(self, value: float) -> float:

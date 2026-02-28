@@ -48,7 +48,10 @@ class ReplayHarness:
         return summary_a, summary_b
 
     def _fingerprint(self, runtime: DynastyRuntime) -> dict:
-        rows = runtime.store.get_latest_standings(runtime.org_state.season, max(1, runtime.org_state.week - 1))
+        standings_week = runtime.org_state.week - 1
+        if standings_week < 1:
+            standings_week = 1
+        rows = runtime.store.get_latest_standings(runtime.org_state.season, standings_week)
         return {
             "season": runtime.org_state.season,
             "week": runtime.org_state.week,

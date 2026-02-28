@@ -15,8 +15,9 @@ from grs.contracts import (
     SnapContextPackage,
 )
 from grs.core import EngineIntegrityError, seeded_random
-from grs.football import FootballEngine, FootballResolver, GameSessionEngine
-from grs.football.traits import required_trait_codes
+from grs.football import FootballEngine, FootballResolver, GameSessionEngine, PreSimValidator, ResourceResolver
+from grs.football.coaching import PolicyDrivenCoachDecisionEngine
+from grs.football.traits import canonical_trait_catalog, required_trait_codes
 from grs.org.entities import Player
 
 
@@ -105,7 +106,7 @@ def _intent_for_play_type(play_type: PlayType) -> tuple[str, str, str, str]:
 
 
 def test_matchup_compile_is_deterministic_under_shuffled_participants() -> None:
-    resolver = FootballResolver(random_source=seeded_random(500))
+    resolver = FootballResolver(random_source=seeded_random(500), resource_resolver=ResourceResolver())
     base = _build_context("P_SHUFFLE", PlayType.PASS)
     shuffled = _build_context("P_SHUFFLE", PlayType.PASS)
     random.Random(42).shuffle(shuffled.participants)
@@ -119,23 +120,30 @@ def test_matchup_compile_is_deterministic_under_shuffled_participants() -> None:
 
 
 def test_no_static_multi_actor_exchange_rep_injected() -> None:
-    resolver = FootballResolver(random_source=seeded_random(501))
+    resolver = FootballResolver(random_source=seeded_random(501), resource_resolver=ResourceResolver())
     res = resolver.resolve_snap(_build_context("P_MULTI", PlayType.PASS))
     assert not any(rep.rep_type == "multi_actor_exchange" for rep in res.rep_ledger)
     assert any("multi_actor" in rep.context_tags for rep in res.rep_ledger)
 
 
 def test_kicks_and_conversion_use_adjudicated_defense_possession() -> None:
-    resolver = FootballResolver(random_source=seeded_random(502))
+    resolver = FootballResolver(random_source=seeded_random(502), resource_resolver=ResourceResolver())
     for play_type in [PlayType.FIELD_GOAL, PlayType.EXTRA_POINT, PlayType.TWO_POINT]:
         res = resolver.resolve_snap(_build_context(f"P_{play_type.value}", play_type))
         assert res.play_result.next_possession_team_id == "B"
 
 
 def test_missing_runtime_injury_trait_hard_fails() -> None:
-    resolver = FootballResolver(random_source=seeded_random(503))
-    engine = FootballEngine(resolver)
-    session_engine = GameSessionEngine(engine, random_source=seeded_random(504))
+    resource_resolver = ResourceResolver()
+    validator = PreSimValidator(resource_resolver=resource_resolver, trait_catalog=canonical_trait_catalog())
+    resolver = FootballResolver(random_source=seeded_random(503), resource_resolver=resource_resolver)
+    engine = FootballEngine(resolver=resolver, validator=validator)
+    session_engine = GameSessionEngine(
+        engine,
+        coach_engine=PolicyDrivenCoachDecisionEngine(repository=resource_resolver),
+        validator=validator,
+        random_source=seeded_random(504),
+    )
     resolution = engine.run_snap(_build_context("P_INJ", PlayType.PASS))
     player_lookup: dict[str, Player] = {}
     for actor_id in {a.actor_id for rep in resolution.rep_ledger for a in rep.actors}:
@@ -151,7 +159,9 @@ def test_missing_runtime_injury_trait_hard_fails() -> None:
             hidden_dev_curve=0.5,
             traits={code: 55.0 for code in required_trait_codes()},
         )
-    target_actor = next(iter(player_lookup))
+    candidates = session_engine._injury_evaluator._collision_candidates(resolution)
+    assert candidates
+    target_actor = next(iter(candidates))
     player_lookup[target_actor].traits.pop("durability", None)
     state = GameSessionState(
         game_id="G_INJ",

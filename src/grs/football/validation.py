@@ -17,7 +17,7 @@ from grs.contracts import (
 )
 from grs.football.contest import parse_influence_profiles, required_influence_families
 from grs.football.resources import ResourceResolver
-from grs.football.traits import canonical_trait_catalog, validate_traits
+from grs.football.traits import validate_traits
 from grs.org.entities import Franchise, Player
 
 OFFENSE_REQUIRED_SLOTS = {"QB1", "RB1", "WR1", "WR2", "WR3", "TE1", "LT", "LG", "C", "RG", "RT"}
@@ -29,11 +29,12 @@ ALL_REQUIRED_SLOTS = OFFENSE_REQUIRED_SLOTS | DEFENSE_REQUIRED_SLOTS | SPECIAL_T
 class PreSimValidator:
     def __init__(
         self,
-        resource_resolver: ResourceResolver | None = None,
-        trait_catalog: Iterable[TraitCatalogEntry] | None = None,
+        *,
+        resource_resolver: ResourceResolver,
+        trait_catalog: Iterable[TraitCatalogEntry],
     ) -> None:
-        self._resource_resolver = resource_resolver or ResourceResolver()
-        self._trait_catalog = list(trait_catalog or canonical_trait_catalog())
+        self._resource_resolver = resource_resolver
+        self._trait_catalog = list(trait_catalog)
         self._required_traits = {t.trait_code for t in self._trait_catalog if t.required}
         self._validate_trait_influence_resources()
         self._validate_trait_role_mapping_coverage()
@@ -48,7 +49,6 @@ class PreSimValidator:
         away: Franchise,
         session_state: GameSessionState,
         random_source: RandomSource | None,
-        coaching_policy_id: str = "balanced_default",
     ) -> ValidationResult:
         issues: list[ValidationIssue] = []
         if random_source is None:
@@ -95,7 +95,10 @@ class PreSimValidator:
 
         issues.extend(self._validate_team_readiness(home))
         issues.extend(self._validate_team_readiness(away))
-        issues.extend(self._validate_policy(coaching_policy_id))
+        issues.extend(self._validate_policy(home.coaching_policy_id))
+        issues.extend(self._validate_policy(away.coaching_policy_id))
+        issues.extend(self._validate_rules_profile(home.rules_profile_id))
+        issues.extend(self._validate_rules_profile(away.rules_profile_id))
 
         return self._finalize(issues)
 
@@ -214,6 +217,14 @@ class PreSimValidator:
             issues.extend(exc.issues)
         return issues
 
+    def _validate_rules_profile(self, rules_profile_id: str) -> list[ValidationIssue]:
+        issues: list[ValidationIssue] = []
+        try:
+            self._resource_resolver.resolve_rules_profile(rules_profile_id)
+        except ValidationError as exc:
+            issues.extend(exc.issues)
+        return issues
+
     def _validate_playcall_fields(self, playcall: PlaycallRequest) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
         if playcall.playbook_entry_id:
@@ -257,7 +268,19 @@ class PreSimValidator:
             issues.extend(exc.issues)
         try:
             formation = self._resource_resolver.resolve_formation(playcall.formation)
-            allowed = formation.get("allowed_personnel", [])
+            if "allowed_personnel" not in formation:
+                issues.append(
+                    ValidationIssue(
+                        code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                        severity="blocking",
+                        field_path="formation.allowed_personnel",
+                        entity_id=playcall.formation,
+                        message="formation is missing allowed_personnel",
+                    )
+                )
+                allowed = []
+            else:
+                allowed = formation["allowed_personnel"]
             if playcall.personnel not in allowed:
                 issues.append(
                     ValidationIssue(
@@ -272,7 +295,17 @@ class PreSimValidator:
             issues.extend(exc.issues)
         try:
             offense = self._resource_resolver.resolve_concept(playcall.offensive_concept, "offense")
-            if playcall.play_type.value not in offense.get("play_types", []):
+            if "play_types" not in offense:
+                issues.append(
+                    ValidationIssue(
+                        code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                        severity="blocking",
+                        field_path="offense_concept.play_types",
+                        entity_id=playcall.offensive_concept,
+                        message="offense concept missing play_types",
+                    )
+                )
+            elif playcall.play_type.value not in offense["play_types"]:
                 issues.append(
                     ValidationIssue(
                         code="OFFENSE_CONCEPT_PLAYTYPE_MISMATCH",
@@ -286,7 +319,17 @@ class PreSimValidator:
             issues.extend(exc.issues)
         try:
             defense = self._resource_resolver.resolve_concept(playcall.defensive_concept, "defense")
-            if playcall.play_type.value not in defense.get("play_types", []):
+            if "play_types" not in defense:
+                issues.append(
+                    ValidationIssue(
+                        code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                        severity="blocking",
+                        field_path="defense_concept.play_types",
+                        entity_id=playcall.defensive_concept,
+                        message="defense concept missing play_types",
+                    )
+                )
+            elif playcall.play_type.value not in defense["play_types"]:
                 issues.append(
                     ValidationIssue(
                         code="DEFENSE_CONCEPT_PLAYTYPE_MISMATCH",

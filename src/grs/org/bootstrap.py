@@ -106,6 +106,8 @@ def build_default_league(team_count: int = 8, season: int = 2026) -> LeagueState
                 staff=staff,
                 roster=roster,
                 depth_chart=depth_chart,
+                coaching_policy_id="balanced_base",
+                rules_profile_id="nfl_standard_v1",
             )
         )
         standings.ensure_team(team_id)

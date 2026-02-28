@@ -4,11 +4,11 @@
     "schema_version": "1.0",
     "resource_version": "1.1.0",
     "generated_at": "2026-02-28T00:00:00Z",
-    "checksum": "a02e50f0610ba86773eb58a811f00d52a35d3abeb7daab64b474dbf084f17393"
+    "checksum": "9c7640b018052ecb0f1f26ebe217898dbc45e9cdbe1cb73fae2a8e50065a368b"
   },
   "resources": [
     {
-      "id": "balanced_default",
+      "id": "balanced_base",
       "description": "Balanced baseline policy",
       "playbook_by_posture": {
         "normal": [

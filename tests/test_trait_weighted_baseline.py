@@ -10,7 +10,7 @@ from grs.contracts import (
     SnapContextPackage,
 )
 from grs.core import seeded_random
-from grs.football import FootballResolver
+from grs.football import FootballResolver, ResourceResolver
 from grs.football.contest import required_influence_families
 from grs.football.traits import required_trait_codes
 
@@ -122,7 +122,7 @@ def _mean_yards(
     defense_trait_overrides: dict[str, float] | None = None,
     sample_count: int = 80,
 ) -> tuple[float, list[str]]:
-    resolver = FootballResolver(random_source=seeded_random(900))
+    resolver = FootballResolver(random_source=seeded_random(900), resource_resolver=ResourceResolver())
     total_yards = 0
     terminals: list[str] = []
     for idx in range(sample_count):
@@ -145,7 +145,7 @@ def _score_event_count(
     sample_count: int = 80,
     expected_score_event: str,
 ) -> int:
-    resolver = FootballResolver(random_source=seeded_random(901))
+    resolver = FootballResolver(random_source=seeded_random(901), resource_resolver=ResourceResolver())
     hits = 0
     for idx in range(sample_count):
         scp = _build_context(
@@ -160,7 +160,7 @@ def _score_event_count(
 
 
 def _turnover_rate(play_type: PlayType, offense_trait_overrides: dict[str, float], sample_count: int = 80) -> float:
-    resolver = FootballResolver(random_source=seeded_random(902))
+    resolver = FootballResolver(random_source=seeded_random(902), resource_resolver=ResourceResolver())
     turnovers = 0
     for idx in range(sample_count):
         scp = _build_context(
@@ -247,7 +247,7 @@ def test_trait_sensitivity_special_teams_field_goal_make_rate():
 
 
 def test_special_teams_and_two_point_use_contest_based_resolution():
-    resolver = FootballResolver(random_source=seeded_random(903))
+    resolver = FootballResolver(random_source=seeded_random(903), resource_resolver=ResourceResolver())
     for play_type in [
         PlayType.PUNT,
         PlayType.KICKOFF,
@@ -261,14 +261,14 @@ def test_special_teams_and_two_point_use_contest_based_resolution():
                 play_type=play_type,
             )
         )
-        families = {contest.family for contest in res.contest_outputs}
+        families = {contest.family for contest in res.artifact_bundle.contest_resolutions}
         expected = required_influence_families(play_type.value)
         assert expected.issubset(families)
         assert any(node.source_type == "contest" for node in res.causality_chain.nodes)
 
 
 def test_causality_chains_for_non_turnover_events_remain_accountable():
-    resolver = FootballResolver(random_source=seeded_random(904))
+    resolver = FootballResolver(random_source=seeded_random(904), resource_resolver=ResourceResolver())
     observed_non_turnover = 0
     for play_type in [PlayType.RUN, PlayType.PASS, PlayType.PUNT, PlayType.KICKOFF, PlayType.FIELD_GOAL, PlayType.EXTRA_POINT]:
         for idx in range(20):

@@ -4,8 +4,17 @@ import pytest
 
 from grs.contracts import ActorRef, InGameState, ParameterizedIntent, PlayType, SimMode, Situation, SnapContextPackage
 from grs.core import EngineIntegrityError, seeded_random
-from grs.football import FootballEngine, FootballResolver
-from grs.football.traits import required_trait_codes
+from grs.football import FootballEngine, FootballResolver, PreSimValidator, ResourceResolver
+from grs.football.traits import canonical_trait_catalog, required_trait_codes
+
+
+def _make_engine(seed: int) -> FootballEngine:
+    resolver = ResourceResolver()
+    validator = PreSimValidator(resource_resolver=resolver, trait_catalog=canonical_trait_catalog())
+    return FootballEngine(
+        resolver=FootballResolver(random_source=seeded_random(seed), resource_resolver=resolver),
+        validator=validator,
+    )
 
 
 def test_engine_hard_stop_on_invalid_state():
@@ -18,7 +27,7 @@ def test_engine_hard_stop_on_invalid_state():
         in_game_states={},
         intent=ParameterizedIntent("11", "gun_trips", "inside_zone", "cover3_match", play_type=PlayType.RUN),
     )
-    engine = FootballEngine(FootballResolver(seeded_random(1)))
+    engine = _make_engine(1)
     with pytest.raises(EngineIntegrityError) as ex:
         engine.run_snap(scp)
     assert ex.value.artifact.error_code == "PRE_SIM_VALIDATION_FAILED"
@@ -43,7 +52,7 @@ def test_force_outcome_dev_mode():
         intent=ParameterizedIntent("11", "gun_trips", "spacing", "cover3_match", play_type=PlayType.PASS),
     )
 
-    engine = FootballEngine(FootballResolver(seeded_random(77)))
+    engine = _make_engine(77)
     res = engine.run_snap(scp, dev_mode=True, force_target="first_down", max_attempts=300)
     assert res.conditioned
     assert res.causality_chain.terminal_event == "first_down"
@@ -67,6 +76,6 @@ def test_force_outcome_not_available_without_dev_mode():
         trait_vectors=traits,
         intent=ParameterizedIntent("11", "gun_trips", "spacing", "cover3_match", play_type=PlayType.PASS),
     )
-    engine = FootballEngine(FootballResolver(seeded_random(77)))
+    engine = _make_engine(77)
     with pytest.raises(ValueError):
         engine.run_snap(scp, dev_mode=False, force_target="first_down", max_attempts=3)

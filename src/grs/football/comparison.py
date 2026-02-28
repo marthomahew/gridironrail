@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from grs.contracts import ActorRef, InGameState, ParameterizedIntent, PlayType, SimMode, Situation, SnapContextPackage
 from grs.core import seeded_random
+from grs.football.resources import ResourceResolver
 from grs.football.resolver import FootballResolver
 from grs.football.traits import required_trait_codes
 
@@ -17,7 +18,7 @@ class ResolverDistributionReport:
 
 
 def run_distribution_report(*, play_type: PlayType, sample_count: int = 200, seed: int = 500) -> ResolverDistributionReport:
-    resolver = FootballResolver(random_source=seeded_random(seed))
+    resolver = FootballResolver(random_source=seeded_random(seed), resource_resolver=ResourceResolver())
     total_yards = 0
     turnovers = 0
     scores = 0

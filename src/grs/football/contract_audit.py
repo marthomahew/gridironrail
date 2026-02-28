@@ -16,15 +16,20 @@ from grs.contracts import (
     ValidationError,
 )
 from grs.core import make_id, seeded_random
+from grs.football.resources import ResourceResolver
 from grs.football.resolver import FootballEngine, FootballResolver
-from grs.football.traits import required_trait_codes
+from grs.football.traits import canonical_trait_catalog, required_trait_codes
 from grs.football.validation import PreSimValidator
 
 
 class FootballContractAuditor:
     def __init__(self) -> None:
-        self._validator = PreSimValidator()
-        self._engine = FootballEngine(FootballResolver(seeded_random(2026)), validator=self._validator)
+        resolver = ResourceResolver()
+        self._validator = PreSimValidator(resource_resolver=resolver, trait_catalog=canonical_trait_catalog())
+        self._engine = FootballEngine(
+            resolver=FootballResolver(random_source=seeded_random(2026), resource_resolver=resolver),
+            validator=self._validator,
+        )
 
     def run(self) -> ContractAuditReport:
         checks: list[ContractAuditCheck] = []

@@ -4,11 +4,11 @@
     "schema_version": "1.0",
     "resource_version": "1.0.0",
     "generated_at": "2026-02-28T00:00:00Z",
-    "checksum": "ea7403742d5cd51703e7b7144ae3c12597370b83d1a6d90d2acb3af4a6052bb0"
+    "checksum": "64deed1a3b739798bb7510184b27a0eafcf647e263b56dd7a924713b7560ecea"
   },
   "resources": [
     {
-      "id": "nfl_placeholder_v1",
+      "id": "nfl_standard_v1",
       "clock": {
         "regulation_quarters": 4,
         "regulation_seconds": 900,
@@ -30,8 +30,7 @@
         "punt_touchback_spot": 20
       },
       "metadata": {
-        "placeholder": true,
-        "notes": "NFL-like defaults for 1.0"
+        "notes": "NFL-like baseline rules profile for 1.0"
       }
     }
   ]

@@ -90,6 +90,8 @@ class Franchise:
     roster: list[Player] = field(default_factory=list)
     depth_chart: list[DepthChartAssignment] = field(default_factory=list)
     cap_space: int = 255_000_000
+    coaching_policy_id: str = "balanced_base"
+    rules_profile_id: str = "nfl_standard_v1"
 
 
 @dataclass(slots=True)

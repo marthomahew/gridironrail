@@ -192,7 +192,10 @@ def _derive_trait_value(
     if code == "volatility_profile":
         base = 100.0 - (volatility_truth * 100.0) + jitter
 
-    return max(1.0, min(99.0, round(base, 3)))
+    value = round(base, 3)
+    if value < 1.0 or value > 99.0:
+        raise ValueError(f"derived trait value out of domain for '{code}' on player '{player_id}'")
+    return value
 
 
 def _trait_status(code: str) -> TraitStatus:

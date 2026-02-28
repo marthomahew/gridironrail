@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from typing import Iterable
+import math
 
 from grs.contracts import (
     ActorRef,
@@ -31,7 +32,7 @@ from grs.contracts import (
     SnapContextPackage,
     ValidationError,
 )
-from grs.core import EngineIntegrityError, build_forensic_artifact, gameplay_random, make_id, now_utc
+from grs.core import EngineIntegrityError, build_forensic_artifact, make_id, now_utc
 from grs.football.contest import ContestEvaluator, parse_influence_profiles, required_influence_families
 from grs.football.matchup import MatchupCompileError, MatchupCompiler
 from grs.football.models import SnapResolution
@@ -73,9 +74,9 @@ class FootballResolver:
         PlayType.TWO_POINT: 2,
     }
 
-    def __init__(self, random_source: RandomSource | None = None, resource_resolver: ResourceResolver | None = None) -> None:
-        self._random_source = random_source or gameplay_random()
-        self._resource_resolver = resource_resolver or ResourceResolver()
+    def __init__(self, *, random_source: RandomSource, resource_resolver: ResourceResolver) -> None:
+        self._random_source = random_source
+        self._resource_resolver = resource_resolver
         self._contest = ContestEvaluator()
         self._matchup_compiler = MatchupCompiler()
         self._families: dict[str, dict[str, PlayFamilyInfluenceProfile]] = {}
@@ -265,7 +266,7 @@ class FootballResolver:
         snapshots = [pre_snap.graph]
         transitions = ["pre_snap_compile"]
         for idx in range(1, checks + 1):
-            phase = "branch_resolution" if idx > 4 else self.UNIVERSAL_FLOW[min(idx, 4)]
+            phase = self.UNIVERSAL_FLOW[idx] if idx <= 4 else "branch_resolution"
             transitions.append(f"{phase}:check_{idx}")
             family = families[(idx - 1) % len(families)]
             profile = self._families[scp.intent.play_type.value][family]
@@ -372,11 +373,14 @@ class FootballResolver:
             separation = by_family["separation_window"].score
             decision = by_family["decision_risk"].score
             catch = by_family["catch_point_contest"].score
-            comp_prob = max(0.03, min(0.97, 0.25 + separation * 0.3 + decision * 0.25 + catch * 0.2 - pressure * 0.2))
+            comp_signal = -0.8 + (separation * 1.2) + (decision * 1.0) + (catch * 0.8) - (pressure * 0.9)
+            comp_prob = self._unit_sigmoid(comp_signal)
             complete = rand.rand() < comp_prob
             yards = int(round(((separation - pressure) * 14.0) + ((rand.rand() - 0.5) * 8.0))) if complete else -rand.randint(0, 5)
             int_prob = profile.turnover_scale * (1.0 - decision) * (1.0 - catch) * (0.7 + pressure)
             fum_prob = profile.turnover_scale * (1.0 - by_family["ball_security"].score) * 0.35
+            if int_prob < 0.0 or fum_prob < 0.0:
+                raise self._domain_fail(scp, "negative turnover probability component", {"int_prob": int_prob, "fum_prob": fum_prob})
             roll = rand.rand()
             if roll < int_prob:
                 turnover = True
@@ -386,28 +390,50 @@ class FootballResolver:
                 turnover_type = "FUMBLE"
             if scp.intent.play_type == PlayType.TWO_POINT:
                 score_event = "TWO_PT_GOOD" if (not turnover and yards >= 2) else "TWO_PT_FAIL"
-                yards = 2 if score_event == "TWO_PT_GOOD" else max(-2, min(1, yards))
+                if score_event == "TWO_PT_GOOD":
+                    yards = 2
+                else:
+                    two_pt_signal = ((separation - pressure) * 2.0) + ((rand.rand() - 0.5) * 2.0)
+                    yards = int(round((self._unit_sigmoid(two_pt_signal) * 3.0) - 2.0))
         elif scp.intent.play_type in {PlayType.PUNT, PlayType.KICKOFF}:
             kick = by_family["kick_quality"].score
             cover = by_family["coverage_lane_integrity"].score
             ret = by_family["return_vision_convergence"].score
             gross = int(round(28 + kick * 36 + ((rand.rand() - 0.5) * 8.0)))
             ret_yards = int(round(8 + ret * 24 - cover * 14 + ((rand.rand() - 0.5) * 8.0)))
-            yards = gross - max(0, ret_yards)
-            if rand.rand() < (0.01 + max(0.0, (ret - cover) * 0.18)):
+            returned = ret_yards if ret_yards > 0 else 0
+            yards = gross - returned
+            td_prob = 0.01 + ((ret - cover) * 0.18 if (ret - cover) > 0.0 else 0.0)
+            if td_prob < 0.0 or td_prob > 1.0:
+                raise self._domain_fail(scp, "special teams return touchdown probability out of domain", {"td_prob": td_prob})
+            if rand.rand() < td_prob:
                 score_event = "PUNT_RETURN_TD" if scp.intent.play_type == PlayType.PUNT else "KICK_RETURN_TD"
         else:
             kick = by_family["kick_quality"].score
             block = by_family["block_pressure"].score
-            dist = max(18, 100 - scp.situation.yard_line)
-            make_prob = max(0.02, min(0.99, kick * 0.85 + (1.0 - block) * 0.3 - (dist / 80.0)))
+            dist = 100 - scp.situation.yard_line
+            make_signal = (kick * 2.0) + ((1.0 - block) * 0.9) - (dist / 28.0)
+            make_prob = self._unit_sigmoid(make_signal)
             made = rand.rand() < make_prob
             score_event = "FG_GOOD" if scp.intent.play_type == PlayType.FIELD_GOAL and made else "FG_MISS" if scp.intent.play_type == PlayType.FIELD_GOAL else "XP_GOOD" if made else "XP_MISS"
         for penalty in penalties:
             yards += penalty.yards if penalty.against_team_id != offense else -penalty.yards
-        new_spot = max(1, min(99, scp.situation.yard_line + yards))
-        if scp.intent.play_type in {PlayType.RUN, PlayType.PASS} and not turnover and new_spot >= 99:
+        raw_spot = scp.situation.yard_line + yards
+        if scp.intent.play_type in {PlayType.RUN, PlayType.PASS} and not turnover and raw_spot >= 99:
             score_event = "OFF_TD"
+        if score_event in {"OFF_TD", "PUNT_RETURN_TD", "KICK_RETURN_TD"}:
+            new_spot = 99
+        else:
+            if raw_spot < 1 or raw_spot > 99:
+                yards = self._bounded_field_swing(scp.situation.yard_line, yards)
+                raw_spot = scp.situation.yard_line + yards
+            if raw_spot < 1 or raw_spot > 99:
+                raise self._domain_fail(
+                    scp,
+                    "new spot out of domain",
+                    {"raw_spot": raw_spot, "yards": yards, "yard_line": scp.situation.yard_line, "score_event": score_event},
+                )
+            new_spot = raw_spot
         return _TerminalOutcome(
             play_id=scp.play_id,
             yards=yards,
@@ -447,7 +473,7 @@ class FootballResolver:
                 next_possession = defense
                 notes = ["turnover on downs"]
             else:
-                next_down, next_distance = scp.situation.down + 1, max(1, remaining)
+                next_down, next_distance = scp.situation.down + 1, remaining
                 next_possession = offense
                 notes = ["normal progression"]
         return RulesAdjudicationResult(
@@ -618,6 +644,37 @@ class FootballResolver:
         profile = self._outcome_profiles[scp.intent.play_type.value]
         return self._random_from_scp(scp).spawn("clock").randint(profile.clock_delta_min, profile.clock_delta_max)
 
+    def _unit_sigmoid(self, signal: float) -> float:
+        return 1.0 / (1.0 + math.exp(-signal))
+
+    def _domain_fail(self, scp: SnapContextPackage, message: str, context: dict[str, object]) -> EngineIntegrityError:
+        return EngineIntegrityError(
+            build_forensic_artifact(
+                engine_scope="football",
+                error_code="OUT_OF_DOMAIN_RUNTIME_VALUE",
+                message=message,
+                state_snapshot={
+                    "game_id": scp.game_id,
+                    "play_id": scp.play_id,
+                    "play_type": scp.intent.play_type.value,
+                },
+                context=context,
+                identifiers={"game_id": scp.game_id, "play_id": scp.play_id},
+                causal_fragment=["terminal_resolution", "domain_guard"],
+            )
+        )
+
+    def _bounded_field_swing(self, yard_line: int, yards: int) -> int:
+        if yards == 0:
+            return 0
+        if yards > 0:
+            max_gain = 99 - yard_line
+            swing = self._unit_sigmoid(yards / 10.0)
+            return int(round(max_gain * swing))
+        max_loss = yard_line - 1
+        swing = self._unit_sigmoid(abs(yards) / 10.0)
+        return -int(round(max_loss * swing))
+
     def _load_profiles(self) -> None:
         for play_type in [p.value for p in PlayType]:
             resource = self._resource_resolver.resolve_trait_influence(play_type)
@@ -694,9 +751,9 @@ class FootballResolver:
 
 
 class FootballEngine:
-    def __init__(self, resolver: FootballResolver | None = None, validator: PreSimValidator | None = None) -> None:
-        self._resolver = resolver or FootballResolver()
-        self._validator = validator or PreSimValidator()
+    def __init__(self, *, resolver: FootballResolver, validator: PreSimValidator) -> None:
+        self._resolver = resolver
+        self._validator = validator
 
     def run_snap(
         self,

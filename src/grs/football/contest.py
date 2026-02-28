@@ -181,41 +181,53 @@ class ContestEvaluator:
 
 
 def parse_influence_profiles(resource: dict[str, object]) -> tuple[dict[str, PlayFamilyInfluenceProfile], OutcomeResolutionProfile]:
-    play_type = str(resource.get("id", ""))
+    if "id" not in resource:
+        raise ValueError("trait influence resource missing 'id'")
+    play_type = str(resource["id"])
     if not play_type:
         raise ValueError("trait influence resource missing 'id'")
-    families_raw = resource.get("families")
+    families_raw = resource["families"] if "families" in resource else None
     if not isinstance(families_raw, list) or not families_raw:
         raise ValueError(f"play_type '{play_type}' must provide non-empty families list")
     by_family: dict[str, PlayFamilyInfluenceProfile] = {}
     for family_raw in families_raw:
         if not isinstance(family_raw, dict):
             raise ValueError(f"play_type '{play_type}' has non-object family entry")
-        family = str(family_raw.get("family", ""))
+        if "family" not in family_raw:
+            raise ValueError(f"play_type '{play_type}' family entry missing 'family'")
+        family = str(family_raw["family"])
         if not family:
             raise ValueError(f"play_type '{play_type}' family entry missing 'family'")
+        required = {"offense_weights", "defense_weights", "fatigue_sensitivity", "wear_sensitivity"}
+        missing = sorted(required - set(family_raw.keys()))
+        if missing:
+            raise ValueError(f"play_type '{play_type}' family '{family}' missing required fields {missing}")
         profile = PlayFamilyInfluenceProfile(
             play_type=play_type,
             family=family,
-            offense_weights={str(k): float(v) for k, v in dict(family_raw.get("offense_weights", {})).items()},
-            defense_weights={str(k): float(v) for k, v in dict(family_raw.get("defense_weights", {})).items()},
-            fatigue_sensitivity=float(family_raw.get("fatigue_sensitivity", 0.0)),
-            wear_sensitivity=float(family_raw.get("wear_sensitivity", 0.0)),
+            offense_weights={str(k): float(v) for k, v in dict(family_raw["offense_weights"]).items()},
+            defense_weights={str(k): float(v) for k, v in dict(family_raw["defense_weights"]).items()},
+            fatigue_sensitivity=float(family_raw["fatigue_sensitivity"]),
+            wear_sensitivity=float(family_raw["wear_sensitivity"]),
             context_modifiers={str(k): float(v) for k, v in dict(family_raw.get("context_modifiers", {})).items()},
         )
         by_family[family] = profile
 
-    out_raw = resource.get("outcome_profile")
+    out_raw = resource["outcome_profile"] if "outcome_profile" in resource else None
     if not isinstance(out_raw, dict):
         raise ValueError(f"play_type '{play_type}' missing outcome_profile")
+    required_outcome = {"noise_scale", "explosive_threshold", "turnover_scale", "score_scale", "clock_delta_min", "clock_delta_max"}
+    missing_outcome = sorted(required_outcome - set(out_raw.keys()))
+    if missing_outcome:
+        raise ValueError(f"play_type '{play_type}' outcome_profile missing required fields {missing_outcome}")
     outcome = OutcomeResolutionProfile(
         play_type=play_type,
-        noise_scale=float(out_raw.get("noise_scale", 0.0)),
-        explosive_threshold=int(out_raw.get("explosive_threshold", 0)),
-        turnover_scale=float(out_raw.get("turnover_scale", 0.0)),
-        score_scale=float(out_raw.get("score_scale", 1.0)),
-        clock_delta_min=int(out_raw.get("clock_delta_min", 4)),
-        clock_delta_max=int(out_raw.get("clock_delta_max", 15)),
+        noise_scale=float(out_raw["noise_scale"]),
+        explosive_threshold=int(out_raw["explosive_threshold"]),
+        turnover_scale=float(out_raw["turnover_scale"]),
+        score_scale=float(out_raw["score_scale"]),
+        clock_delta_min=int(out_raw["clock_delta_min"]),
+        clock_delta_max=int(out_raw["clock_delta_max"]),
         context_modifiers={str(k): float(v) for k, v in dict(out_raw.get("context_modifiers", {})).items()},
     )
     return by_family, outcome

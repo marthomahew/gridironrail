@@ -20,11 +20,10 @@ from grs.contracts import (
     ValidationError,
     ValidationIssue,
 )
-from grs.core import EngineIntegrityError, build_forensic_artifact, gameplay_random
-from grs.football.coaching import PolicyDrivenCoachDecisionEngine, intent_to_playcall
+from grs.core import EngineIntegrityError, build_forensic_artifact
+from grs.football.coaching import intent_to_playcall
 from grs.football.injury import InjuryEvaluationError, InjuryEvaluator
 from grs.football.models import GameSessionResult, SnapResolution
-from grs.football.resources import ResourceResolver
 from grs.football.resolver import FootballEngine
 from grs.football.validation import PreSimValidator
 from grs.org.entities import Franchise, Player
@@ -44,15 +43,15 @@ class GameSessionEngine:
     def __init__(
         self,
         football_engine: FootballEngine,
-        coach_engine: CoachDecisionEngine | None = None,
+        coach_engine: CoachDecisionEngine,
         *,
-        validator: PreSimValidator | None = None,
-        random_source: RandomSource | None = None,
+        validator: PreSimValidator,
+        random_source: RandomSource,
     ) -> None:
         self._football_engine = football_engine
-        self._coach_engine = coach_engine or PolicyDrivenCoachDecisionEngine(repository=ResourceResolver(), policy_id="balanced_default")
-        self._validator = validator or PreSimValidator()
-        self._random_source = random_source or gameplay_random()
+        self._coach_engine = coach_engine
+        self._validator = validator
+        self._random_source = random_source
         self._injury_evaluator = InjuryEvaluator()
 
     def run_game(
@@ -67,9 +66,12 @@ class GameSessionEngine:
         snaps: list[SnapResolution] = []
         state = replace(session_state)
         action_stream: list[dict[str, str | int | float]] = []
-        fatigue: dict[str, float] = {}
+        fatigue: dict[str, float] = {
+            p.player_id: 0.1 for p in home.roster + away.roster
+        }
         overtime_possessions: set[str] = set()
         player_lookup = {p.player_id: p for p in home.roster + away.roster}
+        state.active_injuries = {player_id: "none" for player_id in player_lookup}
 
         for snap_index in range(1, max_snaps + 1):
             if state.completed:
@@ -158,7 +160,10 @@ class GameSessionEngine:
             self._apply_resolution_to_state(state, resolution, offense_team.team_id, defense_team.team_id)
 
             for actor_id in in_game_states:
-                fatigue[actor_id] = min(1.0, fatigue.get(actor_id, 0.0) + 0.01)
+                current = fatigue[actor_id]
+                if current < 0.0 or current > 1.0:
+                    raise ValueError(f"fatigue out of domain for actor '{actor_id}': {current}")
+                fatigue[actor_id] = current + ((1.0 - current) * 0.01)
 
             if state.is_overtime:
                 overtime_possessions.add(offense_team.team_id)
@@ -190,7 +195,8 @@ class GameSessionEngine:
                 "owner_risk": team.owner.risk_tolerance,
                 "cap_space": float(team.cap_space),
             },
-            coaching_policy_id="balanced_default",
+            coaching_policy_id=team.coaching_policy_id,
+            rules_profile_id=team.rules_profile_id,
         )
 
     def _participants(self, offense_team: Franchise, defense_team: Franchise, play_type: PlayType) -> list[ActorRef]:
@@ -233,16 +239,22 @@ class GameSessionEngine:
     def _in_game_states(self, participants: list[ActorRef], fatigue_map: dict[str, float], injuries: dict[str, str]) -> dict[str, InGameState]:
         states: dict[str, InGameState] = {}
         for p in participants:
-            fatigue = fatigue_map.get(p.actor_id, 0.1)
-            limitation = injuries.get(p.actor_id, "none")
+            if p.actor_id not in fatigue_map:
+                raise ValueError(f"participant '{p.actor_id}' missing fatigue baseline")
+            if p.actor_id not in injuries:
+                raise ValueError(f"participant '{p.actor_id}' missing injury status")
+            fatigue = fatigue_map[p.actor_id]
+            limitation = injuries[p.actor_id]
+            if fatigue < 0.0 or fatigue > 1.0:
+                raise ValueError(f"fatigue out of domain for actor '{p.actor_id}': {fatigue}")
             hash_key = f"{p.actor_id}:{p.role}".encode("ascii", "ignore")
             discipline_seed = (int(hashlib.sha256(hash_key).hexdigest()[:8], 16) / 0xFFFFFFFF)
             states[p.actor_id] = InGameState(
                 fatigue=fatigue,
-                acute_wear=min(1.0, fatigue * 0.9),
+                acute_wear=fatigue * 0.9,
                 confidence_tilt=0.0,
                 injury_limitation=limitation,
-                discipline_risk=min(1.0, 0.25 + (discipline_seed * 0.6)),
+                discipline_risk=0.25 + (discipline_seed * 0.6),
             )
         return states
 

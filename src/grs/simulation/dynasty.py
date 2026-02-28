@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -9,14 +10,16 @@ from grs.contracts import (
     ActionRequest,
     ActionResult,
     ActionType,
-    CalibrationRunRequest,
+    BatchRunRequest,
     CalibrationTraitProfile,
+    DevCalibrationGateway,
     Difficulty,
     GameSessionState,
     LeagueSnapshotRef,
     NarrativeEvent,
     PlayType,
     PlaycallRequest,
+    TuningPatchRequest,
     RetentionPolicy,
     ScheduleEntry,
     SimMode,
@@ -33,10 +36,10 @@ from grs.core import (
     now_utc,
     persist_forensic_artifact,
     seeded_random,
+    strict_execution_policy,
 )
 from grs.export import ExportService
 from grs.football import (
-    CalibrationService,
     FootballEngine,
     FootballResolver,
     GameSessionEngine,
@@ -44,9 +47,9 @@ from grs.football import (
     PolicyDrivenCoachDecisionEngine,
     PreSimValidator,
     ResourceResolver,
-    calibration_result_to_dict,
     run_football_contract_audit,
 )
+from grs.football.traits import canonical_trait_catalog
 from grs.org import LeagueState, OrganizationalEngine, build_default_league, generate_season_schedule, rank_standings
 from grs.org.entities import Franchise
 from grs.persistence import AuthoritativeStore, GameRetentionContext, run_weekly_etl, should_retain_game
@@ -94,26 +97,30 @@ class DynastyRuntime:
         self.difficulty = profiles[difficulty]
         self.seed = seed
         self.dev_mode = dev_mode
+        self.strict_policy = strict_execution_policy()
 
         self.rand = seeded_random(seed) if seed is not None else gameplay_random()
         self.event_bus = EventBus()
         self.store = AuthoritativeStore(self.paths.sqlite_path)
         self.store.initialize_schema()
         self.resource_resolver = ResourceResolver()
-        self.pre_sim_validator = PreSimValidator(resource_resolver=self.resource_resolver)
+        self.pre_sim_validator = PreSimValidator(
+            resource_resolver=self.resource_resolver,
+            trait_catalog=canonical_trait_catalog(),
+        )
         self.store.save_trait_catalog(self.pre_sim_validator.trait_catalog())
 
         self.org_state: LeagueState = build_default_league(team_count=8)
         self.user_team_id = user_team_id
         self.org_engine = OrganizationalEngine(rand=self.rand.spawn("org"), difficulty=self.difficulty)
         self.football = FootballEngine(
-            FootballResolver(
+            resolver=FootballResolver(
                 random_source=self.rand.spawn("football"),
                 resource_resolver=self.resource_resolver,
             ),
             validator=self.pre_sim_validator,
         )
-        self.coach_engine = PolicyDrivenCoachDecisionEngine(repository=self.resource_resolver, policy_id="balanced_default")
+        self.coach_engine = PolicyDrivenCoachDecisionEngine(repository=self.resource_resolver)
         self.game_session = GameSessionEngine(
             self.football,
             self.coach_engine,
@@ -121,8 +128,9 @@ class DynastyRuntime:
             random_source=self.rand.spawn("session"),
         )
         self.retention_policy = RetentionPolicy()
-        self.calibration = CalibrationService(base_resolver=self.resource_resolver)
-        self.active_tuning_profile_id = "neutral"
+        self.dev_calibration: DevCalibrationGateway | None = None
+        if self.dev_mode:
+            self.dev_calibration = self._load_dev_calibration_gateway()
 
         self.halted = False
         self.last_forensic_path: str | None = None
@@ -176,7 +184,7 @@ class DynastyRuntime:
 
         if action == ActionType.SET_PLAYCALL:
             payload = request.payload
-            required = {"personnel", "formation", "offensive_concept", "defensive_concept", "play_type"}
+            required = {"personnel", "formation", "offensive_concept", "defensive_concept", "play_type", "tempo", "aggression"}
             missing = sorted(required - set(payload.keys()))
             if missing:
                 return ActionResult(
@@ -194,8 +202,8 @@ class DynastyRuntime:
                 formation=str(payload["formation"]),
                 offensive_concept=str(payload["offensive_concept"]),
                 defensive_concept=str(payload["defensive_concept"]),
-                tempo=str(payload.get("tempo", "normal")),
-                aggression=str(payload.get("aggression", "balanced")),
+                tempo=str(payload["tempo"]),
+                aggression=str(payload["aggression"]),
                 play_type=play_type,
             )
             try:
@@ -212,50 +220,85 @@ class DynastyRuntime:
         if action == ActionType.GET_TUNING_PROFILES:
             if not self.dev_mode:
                 return ActionResult(request.request_id, False, "dev mode required for tuning actions")
-            profiles = [asdict(p) for p in self.calibration.list_tuning_profiles()]
-            return ActionResult(request.request_id, True, "tuning profiles", data={"profiles": profiles, "active_profile_id": self.active_tuning_profile_id})
+            calibration = self._require_dev_calibration()
+            profiles = [asdict(p) for p in calibration.list_tuning_profiles()]
+            return ActionResult(request.request_id, True, "tuning profiles", data={"profiles": profiles, "active_profile_id": calibration.active_profile()})
 
         if action == ActionType.SET_TUNING_PROFILE:
             if not self.dev_mode:
                 return ActionResult(request.request_id, False, "dev mode required for tuning actions")
-            profile_id = str(request.payload.get("profile_id", ""))
-            profile_ids = {p.profile_id for p in self.calibration.list_tuning_profiles()}
-            if profile_id not in profile_ids:
-                return ActionResult(request.request_id, False, f"unknown tuning profile '{profile_id}'")
-            self.active_tuning_profile_id = profile_id
+            if "profile_id" not in request.payload:
+                return ActionResult(request.request_id, False, "missing required payload field 'profile_id'")
+            profile_id = str(request.payload["profile_id"])
+            calibration = self._require_dev_calibration()
+            try:
+                updated = calibration.set_tuning_profile(profile_id)
+            except ValueError as exc:
+                return ActionResult(request.request_id, False, str(exc))
             self._emit_dev_event(
                 event_type="tuning_profile_set",
                 claims=[f"active tuning profile set to {profile_id}"],
                 evidence_handles=[f"tuning:{profile_id}"],
             )
-            return ActionResult(request.request_id, True, "tuning profile updated", data={"active_profile_id": self.active_tuning_profile_id})
+            return ActionResult(request.request_id, True, "tuning profile updated", data={"active_profile_id": updated.profile_id})
+
+        if action == ActionType.PATCH_TUNING_PROFILE:
+            if not self.dev_mode:
+                return ActionResult(request.request_id, False, "dev mode required for tuning actions")
+            if "profile_id" not in request.payload:
+                return ActionResult(request.request_id, False, "missing required payload field 'profile_id'")
+            patch = TuningPatchRequest(
+                profile_id=str(request.payload["profile_id"]),
+                family_weight_multipliers=dict(request.payload["family_weight_multipliers"]) if "family_weight_multipliers" in request.payload else {},
+                outcome_multipliers=dict(request.payload["outcome_multipliers"]) if "outcome_multipliers" in request.payload else {},
+            )
+            calibration = self._require_dev_calibration()
+            patched = calibration.patch_profile(patch, actor_team_id=request.actor_team_id)
+            self._emit_dev_event(
+                event_type="tuning_profile_patched",
+                claims=[f"patched tuning profile {patched.profile.profile_id}"],
+                evidence_handles=[f"tuning_patch:{patched.profile.profile_id}"],
+            )
+            return ActionResult(
+                request.request_id,
+                True,
+                "tuning profile patched",
+                data={"profile": asdict(patched.profile), "patched_at": patched.patched_at.isoformat(), "actor_team_id": patched.actor_team_id},
+            )
 
         if action == ActionType.RUN_CALIBRATION_BATCH:
             if not self.dev_mode:
                 return ActionResult(request.request_id, False, "dev mode required for tuning actions")
+            required = {"play_type", "sample_count", "trait_profile"}
+            missing = sorted(required - set(request.payload.keys()))
+            if missing:
+                return ActionResult(request.request_id, False, f"missing calibration fields: {', '.join(missing)}")
             try:
-                play_type = PlayType(str(request.payload.get("play_type", "pass")))
-                sample_count = int(request.payload.get("sample_count", 500))
-                trait_profile = CalibrationTraitProfile(str(request.payload.get("trait_profile", CalibrationTraitProfile.UNIFORM_50.value)))
-                seed = request.payload.get("seed")
+                play_type = PlayType(str(request.payload["play_type"]))
+                sample_count = int(request.payload["sample_count"])
+                trait_profile = CalibrationTraitProfile(str(request.payload["trait_profile"]))
+                seed = request.payload["seed"] if "seed" in request.payload else None
                 seed_value = int(seed) if seed is not None else None
             except ValueError as exc:
                 return ActionResult(request.request_id, False, f"invalid calibration payload: {exc}")
-            run_request = CalibrationRunRequest(
+            run_request = BatchRunRequest(
                 play_type=play_type,
                 sample_count=sample_count,
                 trait_profile=trait_profile,
                 seed=seed_value,
-                tuning_profile_id=self.active_tuning_profile_id,
             )
-            cal_result = self.calibration.run_batch(run_request)
-            self.calibration.persist_result(cal_result, self.paths.duckdb_path)
+            calibration = self._require_dev_calibration()
+            result = calibration.run_batch(run_request, actor_team_id=request.actor_team_id)
             self._emit_dev_event(
                 event_type="calibration_batch_run",
-                claims=[f"calibration batch {cal_result.run_id} completed"],
-                evidence_handles=[f"calibration:{cal_result.run_id}", f"play_type:{cal_result.play_type.value}", f"profile:{cal_result.trait_profile.value}"],
+                claims=[f"calibration batch {result.run.run_id} completed"],
+                evidence_handles=[f"calibration:{result.run.run_id}", f"play_type:{result.run.play_type.value}", f"profile:{result.run.trait_profile.value}"],
             )
-            return ActionResult(request.request_id, True, "calibration batch completed", data=calibration_result_to_dict(cal_result))
+            data = asdict(result.run)
+            data["play_type"] = result.run.play_type.value
+            data["trait_profile"] = result.run.trait_profile.value
+            data["session"] = asdict(result.session)
+            return ActionResult(request.request_id, True, "calibration batch completed", data=data)
 
         if action == ActionType.RUN_FOOTBALL_AUDIT:
             if not self.dev_mode:
@@ -282,22 +325,42 @@ class DynastyRuntime:
         if action == ActionType.EXPORT_CALIBRATION_REPORT:
             if not self.dev_mode:
                 return ActionResult(request.request_id, False, "dev mode required for calibration export actions")
-            outputs, row_counts = self.calibration.export_reports(
-                duckdb_path=self.paths.duckdb_path,
-                output_dir=self.paths.export_dir / "dev_calibration",
-            )
+            calibration = self._require_dev_calibration()
+            outputs, row_counts = calibration.export_reports()
             self._emit_dev_event(
                 event_type="calibration_report_exported",
                 claims=[f"exported calibration report files={len(outputs)}"],
-                evidence_handles=[f"calibration_export:{p.name}" for p in outputs],
+                evidence_handles=[f"calibration_export:{Path(p).name}" for p in outputs],
             )
             return ActionResult(
                 request.request_id,
                 True,
                 "calibration report exported",
                 data={
-                    "exported_files": [str(p) for p in outputs],
+                    "exported_files": outputs,
                     "row_counts": row_counts,
+                },
+            )
+
+        if action == ActionType.RUN_STRICT_AUDIT:
+            if not self.dev_mode:
+                return ActionResult(request.request_id, False, "dev mode required for strict audit actions")
+            service = self._load_strict_audit_service()
+            report = service.run(repo_root=Path(__file__).resolve().parents[3])
+            self._emit_dev_event(
+                event_type="strict_audit_run",
+                claims=[f"strict audit run {report.report_id} passed={report.passed}"],
+                evidence_handles=[f"strict_audit:{report.report_id}"],
+            )
+            return ActionResult(
+                request.request_id,
+                True,
+                "strict audit complete",
+                data={
+                    "report_id": report.report_id,
+                    "generated_at": report.generated_at.isoformat(),
+                    "passed": report.passed,
+                    "sections": [asdict(s) for s in report.sections],
                 },
             )
 
@@ -393,7 +456,7 @@ class DynastyRuntime:
             )
 
         if action == ActionType.GET_FILM_ROOM_GAME:
-            game_id = request.payload.get("game_id")
+            game_id = request.payload["game_id"] if "game_id" in request.payload else None
             if not game_id:
                 return ActionResult(request.request_id, False, "game_id required")
             return ActionResult(request.request_id, True, "film room", data=self.store.load_film_room_game(game_id))
@@ -616,7 +679,6 @@ class DynastyRuntime:
                 away=away,
                 session_state=initial_state,
                 random_source=self.rand,
-                coaching_policy_id="balanced_default",
             )
             report = self.pre_sim_validator.readiness_report(
                 season=self.org_state.season,
@@ -735,7 +797,16 @@ class DynastyRuntime:
         try:
             import duckdb
         except ModuleNotFoundError:
-            return {"labels": [], "values": []}
+            artifact = build_forensic_artifact(
+                engine_scope="runtime",
+                error_code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                message="duckdb dependency is required for analytics reads",
+                state_snapshot={"season": self.org_state.season, "week": self.org_state.week},
+                context={},
+                identifiers={"team_id": self.user_team_id},
+                causal_fragment=["analytics_query"],
+            )
+            raise EngineIntegrityError(artifact)
 
         with duckdb.connect(str(self.paths.duckdb_path)) as conn:
             rows = conn.execute(
@@ -754,9 +825,43 @@ class DynastyRuntime:
         }
 
     def export(self) -> list[Path]:
-        run_weekly_etl(self.paths.sqlite_path, self.paths.duckdb_path, self.org_state.season, max(1, self.org_state.week - 1))
+        etl_week = self.org_state.week - 1
+        if etl_week < 1:
+            etl_week = 1
+        run_weekly_etl(self.paths.sqlite_path, self.paths.duckdb_path, self.org_state.season, etl_week)
         service = ExportService(self.paths.duckdb_path)
         return service.export_required_datasets(self.paths.export_dir)
+
+    def _require_dev_calibration(self) -> DevCalibrationGateway:
+        if self.dev_calibration is None:
+            artifact = build_forensic_artifact(
+                engine_scope="runtime",
+                error_code="DEV_MODULE_IMPORTED_IN_GAMEPLAY_RUNTIME",
+                message="dev calibration gateway was requested without dev mode",
+                state_snapshot={"dev_mode": self.dev_mode},
+                context={},
+                identifiers={"team_id": self.user_team_id},
+                causal_fragment=["dev_calibration_gateway"],
+            )
+            raise EngineIntegrityError(artifact)
+        return self.dev_calibration
+
+    def _load_dev_calibration_gateway(self) -> DevCalibrationGateway:
+        gateway_mod = importlib.import_module("grs.devtools.calibration_gateway")
+        calibration_mod = importlib.import_module("grs.football.calibration")
+        gateway_cls = getattr(gateway_mod, "LocalDevCalibrationGateway")
+        service_cls = getattr(calibration_mod, "CalibrationService")
+        service = service_cls(base_resolver=self.resource_resolver)
+        return gateway_cls(
+            service=service,
+            duckdb_path=self.paths.duckdb_path,
+            export_dir=self.paths.export_dir / "dev_calibration",
+        )
+
+    def _load_strict_audit_service(self):
+        module = importlib.import_module("grs.devtools.strict_audit")
+        service_cls = getattr(module, "StrictAuditService")
+        return service_cls()
 
     def _emit_dev_event(self, *, event_type: str, claims: list[str], evidence_handles: list[str]) -> None:
         event = NarrativeEvent(

@@ -18,36 +18,48 @@ from grs.contracts import (
     Situation,
     SnapContextPackage,
     TuningProfile,
+    RandomSource,
 )
-from grs.core import make_id, seeded_random
+from grs.core import gameplay_random, make_id, seeded_random
 from grs.football.resolver import FootballEngine, FootballResolver
 from grs.football.resources import ResourceResolver
-from grs.football.traits import required_trait_codes
+from grs.football.traits import canonical_trait_catalog, required_trait_codes
+from grs.football.validation import PreSimValidator
 
 
 class CalibrationService:
     """Dev-only batch calibration/tuning service isolated from normal gameplay flows."""
 
-    def __init__(self, base_resolver: ResourceResolver | None = None) -> None:
-        self._base_resolver = base_resolver or ResourceResolver()
+    def __init__(self, *, base_resolver: ResourceResolver) -> None:
+        self._base_resolver = base_resolver
         self._profiles = self._default_tuning_profiles()
 
     def list_tuning_profiles(self) -> list[TuningProfile]:
         return list(self._profiles.values())
 
+    def get_tuning_profile(self, profile_id: str) -> TuningProfile:
+        profile = self._profiles.get(profile_id)
+        if profile is None:
+            raise ValueError(f"unknown tuning profile '{profile_id}'")
+        return profile
+
+    def upsert_tuning_profile(self, profile: TuningProfile) -> None:
+        self._profiles[profile.profile_id] = profile
+
     def run_batch(self, request: CalibrationRunRequest) -> CalibrationRunResult:
         if request.sample_count <= 0:
             raise ValueError("sample_count must be > 0")
-        tuning = self._profiles.get(request.tuning_profile_id)
-        if tuning is None:
-            raise ValueError(f"unknown tuning profile '{request.tuning_profile_id}'")
+        tuning = self.get_tuning_profile(request.tuning_profile_id)
+        random_source = seeded_random(request.seed) if request.seed is not None else gameplay_random()
+        resolver_random = seeded_random(request.seed) if request.seed is not None else gameplay_random()
 
         resolver = self._build_tuned_resolver(tuning)
         engine = FootballEngine(
-            FootballResolver(
-                random_source=seeded_random(request.seed or 2026),
+            resolver=FootballResolver(
+                random_source=resolver_random,
                 resource_resolver=resolver,
-            )
+            ),
+            validator=PreSimValidator(resource_resolver=resolver, trait_catalog=canonical_trait_catalog()),
         )
 
         total_yards = 0
@@ -57,11 +69,12 @@ class CalibrationService:
         terminal_distribution: dict[str, int] = {}
 
         for idx in range(request.sample_count):
+            substream = random_source.spawn(f"calibration:{idx}")
             scp = self._build_context(
                 play_id=f"CAL_{request.play_type.value}_{idx:04d}",
                 play_type=request.play_type,
                 trait_profile=request.trait_profile,
-                seed=(request.seed or 2026) + idx,
+                random_source=substream,
             )
             snap = engine.run_snap(scp)
             total_yards += snap.play_result.yards
@@ -221,25 +234,30 @@ class CalibrationService:
 
     def _build_tuned_resolver(self, tuning: TuningProfile) -> ResourceResolver:
         payload = self._load_trait_influence_payload()
-        resources = payload.get("resources", [])
+        if "resources" not in payload:
+            raise ValueError("trait_influences payload missing resources")
+        resources = payload["resources"]
         if not isinstance(resources, list):
             raise ValueError("trait_influences payload resources must be list")
         tuned_resources = copy.deepcopy(resources)
         for play_resource in tuned_resources:
-            families = play_resource.get("families", [])
-            if not isinstance(families, list):
-                continue
+            if "families" not in play_resource or not isinstance(play_resource["families"], list):
+                raise ValueError("trait influence play resource must provide families list")
+            families = play_resource["families"]
             for family in families:
-                family_name = str(family.get("family", ""))
+                if "family" not in family:
+                    raise ValueError("trait influence family entry missing family key")
+                family_name = str(family["family"])
                 multiplier = tuning.family_weight_multipliers.get(family_name, 1.0)
                 if multiplier != 1.0:
                     self._scale_weights(family, "offense_weights", multiplier)
                     self._scale_weights(family, "defense_weights", multiplier)
-            outcome = play_resource.get("outcome_profile")
-            if isinstance(outcome, dict):
-                for key, mult in tuning.outcome_multipliers.items():
-                    if key in outcome:
-                        outcome[key] = float(outcome[key]) * mult
+            if "outcome_profile" not in play_resource or not isinstance(play_resource["outcome_profile"], dict):
+                raise ValueError("trait influence play resource missing outcome_profile")
+            outcome = play_resource["outcome_profile"]
+            for key, mult in tuning.outcome_multipliers.items():
+                if key in outcome:
+                    outcome[key] = float(outcome[key]) * mult
 
         override = {"manifest": payload["manifest"], "resources": tuned_resources}
         self._update_checksum(override)
@@ -253,9 +271,11 @@ class CalibrationService:
         return json.loads(raw)
 
     def _scale_weights(self, family: dict[str, Any], key: str, multiplier: float) -> None:
-        weights = family.get(key)
+        if key not in family:
+            raise ValueError(f"trait influence family missing '{key}'")
+        weights = family[key]
         if not isinstance(weights, dict):
-            return
+            raise ValueError(f"trait influence family '{key}' must be an object")
         for trait_code in list(weights.keys()):
             weights[trait_code] = float(weights[trait_code]) * multiplier
 
@@ -289,7 +309,7 @@ class CalibrationService:
         play_id: str,
         play_type: PlayType,
         trait_profile: CalibrationTraitProfile,
-        seed: int,
+        random_source: RandomSource,
     ) -> SnapContextPackage:
         offense_roles, defense_roles = self._roles_for_play_type(play_type)
         participants: list[ActorRef] = []
@@ -307,7 +327,7 @@ class CalibrationService:
             )
             for p in participants
         }
-        trait_vectors = self._trait_vectors(participants, trait_profile, seed)
+        trait_vectors = self._trait_vectors(participants, trait_profile, random_source)
         personnel, formation, offense_concept, defense_concept = self._intent_for_play_type(play_type)
         return SnapContextPackage(
             game_id="CALIBRATION",
@@ -341,9 +361,8 @@ class CalibrationService:
         self,
         participants: list[ActorRef],
         profile: CalibrationTraitProfile,
-        seed: int,
+        random_source: RandomSource,
     ) -> dict[str, dict[str, float]]:
-        rnd = seeded_random(seed)
         codes = required_trait_codes()
         out: dict[str, dict[str, float]] = {}
         for participant in participants:
@@ -352,9 +371,9 @@ class CalibrationService:
                 if profile == CalibrationTraitProfile.UNIFORM_50:
                     values[code] = 50.0
                 elif profile == CalibrationTraitProfile.NARROW_45_55:
-                    values[code] = 45.0 + (rnd.rand() * 10.0)
+                    values[code] = 45.0 + (random_source.rand() * 10.0)
                 else:
-                    values[code] = 40.0 + (rnd.rand() * 20.0)
+                    values[code] = 40.0 + (random_source.rand() * 20.0)
             out[participant.actor_id] = values
         return out
 

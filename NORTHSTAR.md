@@ -56,6 +56,14 @@ Still in-progress toward full North Star:
 8. No fallback rating defaults in simulation: no `OVR` defaulting and no substitute-path calculations when required inputs are missing/invalid.
 9. Missing/invalid calculation inputs are integrity failures: fail hard and emit forensic artifact; never continue with guessed values.
 10. Tuning must be modular and externalized: constants/rates/weights are data-driven and editable without introducing hidden guardrails/floors/ceilings in resolver code.
+11. Strict execution policy applies repo-wide:
+- no runtime rescue defaults
+- no active placeholder resources
+- no runtime clamp/floor/ceiling rescue logic
+- hard-fail + forensic artifact on contract/domain violations
+12. Allowed defaults carveout:
+- dataclass `default_factory` container initialization
+- explicit test fixture setup in test-only code
 
 ## Difficulty philosophy
 

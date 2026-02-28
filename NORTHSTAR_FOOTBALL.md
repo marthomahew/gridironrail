@@ -55,6 +55,8 @@ Trait-canon lock now approved:
 4. No hidden floors/ceilings/guardrails in runtime sim math.
 5. All tuning is externalized and versioned (data-driven, not hardcoded rescue logic).
 6. Play/Sim/Off-screen must call identical football physics/resolution contracts.
+7. Runtime math may not rely on clamp/floor/ceiling rescue behavior; invalid domains hard-fail.
+8. Active football resources may not carry placeholder/default-rescue semantics.
 
 ## Football Layer Boundary
 

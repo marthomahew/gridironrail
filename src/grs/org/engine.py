@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+import math
 
 from grs.contracts import LeagueSnapshotRef, NarrativeEvent, ScheduleEntry, TeamStanding
 from grs.core import make_id, now_utc
@@ -130,7 +131,7 @@ class OrganizationalEngine:
                     name=f"Prospect {i + 1}",
                     position=self._rand.choice(positions),
                     age=self._rand.randint(21, 24),
-                    draft_grade_truth=max(35.0, min(95.0, 60.0 + (self._rand.rand() * 40.0 - 20.0))),
+                    draft_grade_truth=35.0 + (self._rand.rand() * 60.0),
                 )
             )
 
@@ -156,9 +157,11 @@ class OrganizationalEngine:
                 position=selected.position,
                 age=selected.age,
                 overall_truth=selected.draft_grade_truth,
-                volatility_truth=max(0.1, min(1.0, self._rand.rand())),
-                injury_susceptibility_truth=max(0.1, min(0.9, self._rand.rand())),
-                hidden_dev_curve=max(30.0, min(95.0, selected.draft_grade_truth + (self._rand.rand() * 16.0 - 8.0))),
+                volatility_truth=0.1 + (self._rand.rand() * 0.9),
+                injury_susceptibility_truth=0.1 + (self._rand.rand() * 0.8),
+                hidden_dev_curve=30.0 + (
+                    65.0 * self._unit_sigmoid(((selected.draft_grade_truth + (self._rand.rand() * 16.0 - 8.0)) - 62.5) * 0.08)
+                ),
                 traits={},
             )
             player.traits = generate_player_traits(
@@ -296,20 +299,25 @@ class OrganizationalEngine:
     def develop_players(self, state: LeagueState) -> None:
         for team in state.teams:
             coaches = [s for s in team.staff if "Coach" in s.role]
-            dev_quality = sum(c.development for c in coaches) / len(coaches) if coaches else 0.5
+            if not coaches:
+                raise ValueError(f"team {team.team_id} is missing coach staff required for development")
+            dev_quality = sum(c.development for c in coaches) / len(coaches)
             for player in team.roster:
                 age_penalty = 0.0
                 if player.age >= 30:
                     age_penalty = (player.age - 29) * 0.7 * self._difficulty.aging_variance_multiplier
                 growth = (dev_quality * 2.0) - age_penalty + ((self._rand.rand() * 2.0 - 1.0) * 2.2)
-                player.overall_truth = max(20.0, min(99.0, player.overall_truth + growth))
+                signal = player.overall_truth + growth
+                player.overall_truth = 20.0 + (79.0 * self._unit_sigmoid((signal - 59.5) * 0.11))
                 player.age += 1 if state.phase == "offseason" and state.week == 1 else 0
 
     def update_ownership_pressure(self, state: LeagueState, team_results: dict[str, float]) -> None:
         for team in state.teams:
-            perf = team_results.get(team.team_id, 0.5)
+            if team.team_id not in team_results:
+                raise ValueError(f"missing team_result entry for {team.team_id}")
+            perf = team_results[team.team_id]
             pressure = (1.0 - perf) * team.owner.spending_aggressiveness * self._difficulty.ownership_pressure_multiplier
-            fire_chance = min(0.9, max(0.05, pressure * 0.45))
+            fire_chance = self._unit_sigmoid((pressure - 0.5) * 4.0)
             if pressure > 0.5 and self._rand.rand() < fire_chance:
                 fired = next((s for s in team.staff if s.role == "HeadCoach"), None)
                 if fired:
@@ -331,11 +339,11 @@ class OrganizationalEngine:
                             season=state.season,
                             week=state.week,
                             tx_type="coaching_change",
-                            summary=f"{team.name} fired {fired.name}",
-                            team_id=team.team_id,
-                            causality_context={"pressure": round(pressure, 3), "fire_chance": round(fire_chance, 3)},
-                        )
+                        summary=f"{team.name} fired {fired.name}",
+                        team_id=team.team_id,
+                        causality_context={"pressure": round(pressure, 3), "fire_chance": round(fire_chance, 3)},
                     )
+                )
 
     def perceived_cards_for_team(self, state: LeagueState, team_id: str) -> list:
         team = next(t for t in state.teams if t.team_id == team_id)
@@ -371,7 +379,9 @@ class OrganizationalEngine:
         return sum(1 for p in team.roster if p.position == position) < 3
 
     def _perceived_draft_score(self, prospect: Prospect, scouts: list[StaffMember]) -> float:
-        quality = sum(s.evaluation for s in scouts) / len(scouts) if scouts else 0.5
+        if not scouts:
+            raise ValueError("draft scoring requires at least one scout")
+        quality = sum(s.evaluation for s in scouts) / len(scouts)
         noise = (self._rand.rand() * 2.0 - 1.0) * (1.0 - quality) * 25.0 * self._difficulty.scouting_noise_multiplier
         return prospect.draft_grade_truth + noise
 
@@ -389,6 +399,9 @@ class OrganizationalEngine:
                 amount=amount,
             )
         )
+
+    def _unit_sigmoid(self, signal: float) -> float:
+        return 1.0 / (1.0 + math.exp(-signal))
 
     def standings_dict(self, state: LeagueState) -> dict[str, TeamStanding]:
         return dict(state.standings.entries)

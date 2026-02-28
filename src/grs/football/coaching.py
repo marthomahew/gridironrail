@@ -16,7 +16,6 @@ from grs.football.resources import ResourceResolver
 @dataclass(slots=True)
 class PolicyDrivenCoachDecisionEngine(CoachDecisionEngine):
     repository: ResourceResolver
-    policy_id: str = "balanced_default"
 
     def decide_play_intent(
         self,
@@ -26,16 +25,16 @@ class PolicyDrivenCoachDecisionEngine(CoachDecisionEngine):
         defense_package: TeamGamePackage,
         random_source: RandomSource,
     ) -> PlayIntentFrame:
-        policy = self.repository.resolve_policy(self.policy_id)
+        policy = self.repository.resolve_policy(offense_package.coaching_policy_id)
         posture = self._posture_for_state(session_state)
 
         playbook_by_posture = policy.get("playbook_by_posture")
         if not isinstance(playbook_by_posture, dict):
-            raise ValueError(f"coaching policy '{self.policy_id}' missing playbook_by_posture")
+            raise ValueError(f"coaching policy '{offense_package.coaching_policy_id}' missing playbook_by_posture")
         candidates = playbook_by_posture.get(posture)
         if not isinstance(candidates, list) or not candidates:
             raise ValueError(
-                f"coaching policy '{self.policy_id}' has no playbook entries for posture '{posture}'"
+                f"coaching policy '{offense_package.coaching_policy_id}' has no playbook entries for posture '{posture}'"
             )
 
         play_id = str(random_source.choice(candidates))

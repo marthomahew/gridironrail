@@ -64,6 +64,24 @@ class ResourceResolver:
 
     def resolve_playbook_entry(self, play_id: str) -> PlaybookEntry:
         raw = self._resolve(self._playbook, play_id, "UNKNOWN_PLAYBOOK_ENTRY")
+        required_fields = {
+            "family",
+            "personnel_id",
+            "formation_id",
+            "offensive_concept_id",
+            "defensive_concept_id",
+            "assignment_template_id",
+        }
+        missing = sorted(required_fields - set(raw.keys()))
+        if missing:
+            issue = ValidationIssue(
+                code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                severity="blocking",
+                field_path=f"playbook.{play_id}",
+                entity_id=play_id,
+                message=f"missing required fields: {missing}",
+            )
+            raise ValidationError([issue])
         try:
             play_type = PlayType(str(raw["play_type"]))
         except ValueError as exc:
@@ -78,12 +96,12 @@ class ResourceResolver:
         return PlaybookEntry(
             play_id=play_id,
             play_type=play_type,
-            family=str(raw.get("family", "")),
-            personnel_id=str(raw.get("personnel_id", "")),
-            formation_id=str(raw.get("formation_id", "")),
-            offensive_concept_id=str(raw.get("offensive_concept_id", "")),
-            defensive_concept_id=str(raw.get("defensive_concept_id", "")),
-            assignment_template_id=str(raw.get("assignment_template_id", "")),
+            family=str(raw["family"]),
+            personnel_id=str(raw["personnel_id"]),
+            formation_id=str(raw["formation_id"]),
+            offensive_concept_id=str(raw["offensive_concept_id"]),
+            defensive_concept_id=str(raw["defensive_concept_id"]),
+            assignment_template_id=str(raw["assignment_template_id"]),
             branch_trigger_ids=[str(v) for v in raw.get("branch_trigger_ids", [])],
             tags=[str(v) for v in raw.get("tags", [])],
         )
@@ -118,27 +136,48 @@ class ResourceResolver:
 
     def resolve_assignment_template(self, template_id: str) -> AssignmentTemplate:
         raw = self._resolve(self._assignment_templates, template_id, "UNKNOWN_ASSIGNMENT_TEMPLATE")
+        required_fields = {"offense_roles", "defense_roles", "pairing_hints", "default_technique"}
+        missing = sorted(required_fields - set(raw.keys()))
+        if missing:
+            issue = ValidationIssue(
+                code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                severity="blocking",
+                field_path=f"assignment_template.{template_id}",
+                entity_id=template_id,
+                message=f"missing required fields: {missing}",
+            )
+            raise ValidationError([issue])
         return AssignmentTemplate(
             template_id=template_id,
-            offense_roles=[str(v) for v in raw.get("offense_roles", [])],
-            defense_roles=[str(v) for v in raw.get("defense_roles", [])],
-            pairing_hints=[dict(item) for item in raw.get("pairing_hints", []) if isinstance(item, dict)],
-            default_technique=str(raw.get("default_technique", "balanced")),
+            offense_roles=[str(v) for v in raw["offense_roles"]],
+            defense_roles=[str(v) for v in raw["defense_roles"]],
+            pairing_hints=[dict(item) for item in raw["pairing_hints"] if isinstance(item, dict)],
+            default_technique=str(raw["default_technique"]),
         )
 
     def resolve_trait_role_mappings(self) -> list[TraitRoleMappingEntry]:
         rows: list[TraitRoleMappingEntry] = []
         for row in self._trait_role_mapping.resources_by_id.values():
-            status_raw = str(row.get("status", TraitStatus.CORE_NOW.value))
-            status = TraitStatus(status_raw)
+            required_fields = {"trait_code", "status", "phase", "contest_family", "role_group", "evidence_tag"}
+            missing = sorted(required_fields - set(row.keys()))
+            if missing:
+                issue = ValidationIssue(
+                    code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                    severity="blocking",
+                    field_path="trait_role_mapping",
+                    entity_id=str(row.get("id", "unknown")),
+                    message=f"missing required fields: {missing}",
+                )
+                raise ValidationError([issue])
+            status = TraitStatus(str(row["status"]))
             rows.append(
                 TraitRoleMappingEntry(
-                    trait_code=str(row.get("trait_code", "")),
+                    trait_code=str(row["trait_code"]),
                     status=status,
-                    phase=str(row.get("phase", "")),
-                    contest_family=str(row.get("contest_family", "")),
-                    role_group=str(row.get("role_group", "")),
-                    evidence_tag=str(row.get("evidence_tag", "")),
+                    phase=str(row["phase"]),
+                    contest_family=str(row["contest_family"]),
+                    role_group=str(row["role_group"]),
+                    evidence_tag=str(row["evidence_tag"]),
                 )
             )
         return rows
@@ -214,12 +253,24 @@ class ResourceResolver:
             )
             raise ValidationError([issue])
 
+        required_manifest_fields = {"resource_type", "schema_version", "resource_version", "generated_at", "checksum"}
+        missing_manifest = sorted(required_manifest_fields - set(manifest_data.keys()))
+        if missing_manifest:
+            issue = ValidationIssue(
+                code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                severity="blocking",
+                field_path=f"{filename}.manifest",
+                entity_id=expected_type,
+                message=f"manifest missing required fields {missing_manifest}",
+            )
+            raise ValidationError([issue])
+
         manifest = ResourceManifest(
-            resource_type=str(manifest_data.get("resource_type", "")),
-            schema_version=str(manifest_data.get("schema_version", "")),
-            resource_version=str(manifest_data.get("resource_version", "")),
-            generated_at=str(manifest_data.get("generated_at", "")),
-            checksum=str(manifest_data.get("checksum", "")),
+            resource_type=str(manifest_data["resource_type"]),
+            schema_version=str(manifest_data["schema_version"]),
+            resource_version=str(manifest_data["resource_version"]),
+            generated_at=str(manifest_data["generated_at"]),
+            checksum=str(manifest_data["checksum"]),
         )
         issues = self._validate_manifest(manifest, expected_type, resources_list)
         if issues:
@@ -289,7 +340,18 @@ class ResourceResolver:
         issues: list[ValidationIssue] = []
 
         for formation_id, formation in self._formations.resources_by_id.items():
-            allowed = formation.get("allowed_personnel", [])
+            if "allowed_personnel" not in formation:
+                issues.append(
+                    ValidationIssue(
+                        code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                        severity="blocking",
+                        field_path=f"formation.{formation_id}.allowed_personnel",
+                        entity_id=formation_id,
+                        message="required field 'allowed_personnel' is missing",
+                    )
+                )
+                continue
+            allowed = formation["allowed_personnel"]
             if not isinstance(allowed, list):
                 issues.append(
                     ValidationIssue(
@@ -314,7 +376,7 @@ class ResourceResolver:
                     )
 
         for policy_id, policy in self._policies.resources_by_id.items():
-            defaults = policy.get("defaults")
+            defaults = policy["defaults"] if "defaults" in policy else None
             if defaults is not None and not isinstance(defaults, dict):
                 issues.append(
                     ValidationIssue(
@@ -325,7 +387,7 @@ class ResourceResolver:
                         message="defaults must be an object",
                     )
                 )
-            playbook_by_posture = policy.get("playbook_by_posture")
+            playbook_by_posture = policy["playbook_by_posture"] if "playbook_by_posture" in policy else None
             if not isinstance(playbook_by_posture, dict):
                 issues.append(
                     ValidationIssue(
@@ -404,8 +466,19 @@ class ResourceResolver:
             )
 
         for template_id, template in self._assignment_templates.resources_by_id.items():
-            offense_roles = template.get("offense_roles", [])
-            defense_roles = template.get("defense_roles", [])
+            if "offense_roles" not in template or "defense_roles" not in template:
+                issues.append(
+                    ValidationIssue(
+                        code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                        severity="blocking",
+                        field_path=f"assignment_template.{template_id}",
+                        entity_id=template_id,
+                        message="assignment template missing offense_roles or defense_roles",
+                    )
+                )
+                continue
+            offense_roles = template["offense_roles"]
+            defense_roles = template["defense_roles"]
             if not isinstance(offense_roles, list) or not isinstance(defense_roles, list):
                 issues.append(
                     ValidationIssue(
@@ -429,7 +502,7 @@ class ResourceResolver:
                 )
 
         for mapping_id, row in self._trait_role_mapping.resources_by_id.items():
-            if not row.get("trait_code"):
+            if "trait_code" not in row or not row["trait_code"]:
                 issues.append(
                     ValidationIssue(
                         code="INVALID_TRAIT_ROLE_MAPPING",
@@ -440,7 +513,9 @@ class ResourceResolver:
                     )
                 )
             try:
-                TraitStatus(str(row.get("status", TraitStatus.CORE_NOW.value)))
+                if "status" not in row:
+                    raise ValueError("missing status")
+                TraitStatus(str(row["status"]))
             except ValueError:
                 issues.append(
                     ValidationIssue(
@@ -475,8 +550,19 @@ class ResourceResolver:
         allowed: dict[str, dict[str, Any]],
         code: str,
     ) -> None:
-        value = str(payload.get(field_name, ""))
-        if not value or value not in allowed:
+        if field_name not in payload:
+            issues.append(
+                ValidationIssue(
+                    code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                    severity="blocking",
+                    field_path=f"playbook.{resource_id}.{field_name}",
+                    entity_id=resource_id,
+                    message=f"required field '{field_name}' missing",
+                )
+            )
+            return
+        value = str(payload[field_name])
+        if value not in allowed:
             issues.append(
                 ValidationIssue(
                     code=code,

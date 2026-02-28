@@ -37,6 +37,16 @@ python -m grs.cli --weeks 2 --play-user-game
 - No OVR fallback when required atomic traits are missing
 - No UI-side simulation logic or direct authoritative state mutation
 
+## Strict Execution Contract
+
+- Runtime paths do not default-and-continue on missing required simulation inputs.
+- Active runtime resources must not carry placeholder/default-rescue semantics.
+- Runtime football/org/perception math paths avoid clamp/floor/ceiling rescue logic.
+- Contract or domain violations hard-fail with forensic artifacts.
+- Allowed defaults carveout:
+- dataclass `default_factory` for container fields
+- explicit test fixtures in test-only modules
+
 ## Near-term goals
 
 - Integrate atomic trait weighting deeper into football resolution math

@@ -3,6 +3,7 @@ from .errors import EngineIntegrityError, build_forensic_artifact, persist_foren
 from .events import EventBus
 from .ids import make_id, now_utc
 from .randomness import PythonRandomSource, gameplay_random, seeded_random
+from .strict_policy import strict_execution_policy
 
 __all__ = [
     "EngineIntegrityError",
@@ -15,5 +16,6 @@ __all__ = [
     "now_utc",
     "persist_forensic_artifact",
     "seeded_random",
+    "strict_execution_policy",
     "validate_global_only_config",
 ]

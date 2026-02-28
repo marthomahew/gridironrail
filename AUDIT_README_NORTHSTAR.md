@@ -2,6 +2,18 @@
 
 Date: 2026-02-28
 
+## Update: Zero-Rescue hardening pass
+
+This audit file predates the zero-rescue hardening pass now in code. Current implementation updates include:
+
+- Dev tuning/calibration isolation behind a devtools gateway loaded only in `dev_mode`.
+- Strict constructor injection for runtime-critical football/session/validation paths (no rescue construction fallbacks).
+- Runtime clamp/floor/ceiling removal in football/session/org/perception simulation paths with domain guards and hard-fail behavior.
+- Placeholder/default-rescue semantic removal from active rules/policy resources (`nfl_standard_v1`, `balanced_base`).
+- New strict audit service and runtime action (`RUN_STRICT_AUDIT`) with CI test coverage.
+
+Notes in this document that reference a 90-trait baseline are stale; current canonical target is 77 with current implementation lock documented in North Star files.
+
 ## Scope and method
 
 This audit compares the current implementation against:

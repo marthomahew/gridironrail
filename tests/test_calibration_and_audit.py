@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import inspect
+import sys
 from pathlib import Path
 
 import duckdb
 
 from grs.contracts import ActionRequest, ActionType
 from grs.core import make_id
-from grs.football import CalibrationService, FootballContractAuditor
+from grs.football import FootballContractAuditor, ResourceResolver
+from grs.football.calibration import CalibrationService
 from grs.football.session import GameSessionEngine
 from grs.simulation import DynastyRuntime
 
@@ -21,7 +23,7 @@ def test_football_contract_audit_matrix_runs() -> None:
 
 
 def test_calibration_service_profiles_exposed() -> None:
-    service = CalibrationService()
+    service = CalibrationService(base_resolver=ResourceResolver())
     profiles = service.list_tuning_profiles()
     assert profiles
     assert any(profile.profile_id == "neutral" for profile in profiles)
@@ -90,6 +92,31 @@ def test_runtime_dev_calibration_action_with_audit_stamp(tmp_path: Path) -> None
 def test_calibration_profiles_do_not_leak_into_session_runtime() -> None:
     source = inspect.getsource(GameSessionEngine)
     assert "CalibrationTraitProfile" not in source
+
+
+def test_runtime_non_dev_does_not_import_devtools_modules(tmp_path: Path) -> None:
+    before = set(sys.modules.keys())
+    DynastyRuntime(root=tmp_path, seed=10, dev_mode=False)
+    after = set(sys.modules.keys())
+    assert "grs.devtools.calibration_gateway" not in (after - before)
+
+
+def test_runtime_strict_audit_action_requires_dev_mode(tmp_path: Path) -> None:
+    runtime = DynastyRuntime(root=tmp_path, seed=11, dev_mode=False)
+    blocked = runtime.handle_action(
+        ActionRequest(make_id("req"), ActionType.RUN_STRICT_AUDIT, {}, "T01")
+    )
+    assert not blocked.success
+    assert "dev mode required" in blocked.message
+
+
+def test_runtime_strict_audit_runs_in_dev_mode(tmp_path: Path) -> None:
+    runtime = DynastyRuntime(root=tmp_path, seed=12, dev_mode=True)
+    result = runtime.handle_action(
+        ActionRequest(make_id("req"), ActionType.RUN_STRICT_AUDIT, {}, "T01")
+    )
+    assert result.success
+    assert "sections" in result.data
 
 
 def test_runtime_export_calibration_requires_dev_mode(tmp_path: Path) -> None:

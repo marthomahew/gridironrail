@@ -2,9 +2,30 @@ from __future__ import annotations
 
 from grs.contracts import ActorRef, GameSessionState, InGameState, ParameterizedIntent, PlayType, SimMode, Situation, SnapContextPackage
 from grs.core import gameplay_random, seeded_random
-from grs.football import FootballEngine, FootballResolver, GameSessionEngine
-from grs.football.traits import required_trait_codes
+from grs.football import FootballEngine, FootballResolver, GameSessionEngine, PreSimValidator, ResourceResolver
+from grs.football.coaching import PolicyDrivenCoachDecisionEngine
+from grs.football.traits import canonical_trait_catalog, required_trait_codes
 from grs.org import build_default_league
+
+
+def _make_engine(random_source) -> FootballEngine:
+    resolver = ResourceResolver()
+    validator = PreSimValidator(resource_resolver=resolver, trait_catalog=canonical_trait_catalog())
+    return FootballEngine(
+        resolver=FootballResolver(random_source=random_source, resource_resolver=resolver),
+        validator=validator,
+    )
+
+
+def _make_session_engine(random_source) -> GameSessionEngine:
+    resolver = ResourceResolver()
+    validator = PreSimValidator(resource_resolver=resolver, trait_catalog=canonical_trait_catalog())
+    football = FootballEngine(
+        resolver=FootballResolver(random_source=random_source, resource_resolver=resolver),
+        validator=validator,
+    )
+    coach = PolicyDrivenCoachDecisionEngine(repository=resolver)
+    return GameSessionEngine(football, coach_engine=coach, validator=validator, random_source=random_source.spawn("session"))
 
 
 def build_context(play_id: str, mode: SimMode = SimMode.PLAY) -> SnapContextPackage:
@@ -51,8 +72,8 @@ def build_context(play_id: str, mode: SimMode = SimMode.PLAY) -> SnapContextPack
 def test_seeded_determinism_same_inputs():
     r1 = seeded_random(99)
     r2 = seeded_random(99)
-    e1 = FootballEngine(FootballResolver(r1))
-    e2 = FootballEngine(FootballResolver(r2))
+    e1 = _make_engine(r1)
+    e2 = _make_engine(r2)
 
     scp = build_context("P1")
     a = e1.run_snap(scp)
@@ -63,7 +84,7 @@ def test_seeded_determinism_same_inputs():
 
 
 def test_gameplay_random_is_non_deterministic_distribution():
-    engine = FootballEngine(FootballResolver(gameplay_random()))
+    engine = _make_engine(gameplay_random())
     outcomes = set()
     for i in range(25):
         res = engine.run_snap(build_context(f"P{i}"))
@@ -72,7 +93,7 @@ def test_gameplay_random_is_non_deterministic_distribution():
 
 
 def test_mode_invariance_same_snap_inputs():
-    engine = FootballEngine(FootballResolver(seeded_random(42)))
+    engine = _make_engine(seeded_random(42))
     base = build_context("P_MODE")
 
     play = engine.run_mode_invariant(base, SimMode.PLAY)
@@ -106,7 +127,7 @@ def test_game_session_completes_with_real_lineups():
         timeouts_away=3,
     )
 
-    engine = GameSessionEngine(FootballEngine(FootballResolver(seeded_random(5))))
+    engine = _make_session_engine(seeded_random(5))
     result = engine.run_game(state, home, away, mode=SimMode.SIM)
 
     assert result.final_state.completed
@@ -118,7 +139,7 @@ def test_session_scoring_requires_explicit_score_event():
     league = build_default_league(team_count=2)
     home = league.teams[0]
     away = league.teams[1]
-    engine = GameSessionEngine(FootballEngine(FootballResolver(seeded_random(5))))
+    engine = _make_session_engine(seeded_random(5))
     state = GameSessionState(
         game_id="S2026_W1_G99",
         season=2026,

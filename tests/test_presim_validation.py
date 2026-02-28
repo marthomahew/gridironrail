@@ -10,7 +10,7 @@ import pytest
 from grs.contracts import ActionRequest, ActionType, ValidationError
 from grs.core import make_id
 from grs.football import PreSimValidator, ResourceResolver
-from grs.football.traits import required_trait_codes
+from grs.football.traits import canonical_trait_catalog, required_trait_codes
 from grs.simulation import DynastyRuntime
 
 
@@ -41,6 +41,8 @@ def test_pre_sim_rejects_missing_formation_id(tmp_path: Path):
                 "offensive_concept": "spacing",
                 "defensive_concept": "cover3_match",
                 "play_type": "pass",
+                "tempo": "normal",
+                "aggression": "balanced",
             },
             "T01",
         )
@@ -61,6 +63,8 @@ def test_pre_sim_rejects_unresolvable_playbook_intent(tmp_path: Path):
                 "offensive_concept": "spacing",
                 "defensive_concept": "cover2",
                 "play_type": "pass",
+                "tempo": "normal",
+                "aggression": "balanced",
             },
             "T01",
         )
@@ -156,7 +160,7 @@ def test_trait_influence_profile_rejects_missing_required_family():
 
     with pytest.raises(ValidationError) as ex:
         resolver = ResourceResolver(bundle_overrides={"trait_influences.json": influences})
-        PreSimValidator(resource_resolver=resolver)
+        PreSimValidator(resource_resolver=resolver, trait_catalog=canonical_trait_catalog())
     assert any(issue.code == "MISSING_INFLUENCE_FAMILY" for issue in ex.value.issues)
 
 
@@ -168,7 +172,7 @@ def test_trait_influence_profile_rejects_unknown_trait_code():
 
     with pytest.raises(ValidationError) as ex:
         resolver = ResourceResolver(bundle_overrides={"trait_influences.json": influences})
-        PreSimValidator(resource_resolver=resolver)
+        PreSimValidator(resource_resolver=resolver, trait_catalog=canonical_trait_catalog())
     assert any(issue.code == "UNKNOWN_INFLUENCE_TRAIT" for issue in ex.value.issues)
 
 
