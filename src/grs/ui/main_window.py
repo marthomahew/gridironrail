@@ -21,7 +21,13 @@ class MainWindowFactory:
     def __init__(self, chart_adapter: ChartAdapter | None = None) -> None:
         self.chart_adapter = chart_adapter or MatplotlibChartAdapter()
 
-    def create(self, action_handler: Callable[[ActionRequest], ActionResult], debug_gate: DebugGate):
+    def create(
+        self,
+        action_handler: Callable[[ActionRequest], ActionResult],
+        debug_gate: DebugGate,
+        *,
+        actor_team_id: str,
+    ):
         from PySide6.QtWidgets import (
             QAbstractItemView,
             QComboBox,
@@ -52,9 +58,11 @@ class MainWindowFactory:
                 super().__init__()
                 self.setWindowTitle("Gridiron Rail: Sundays")
                 self.resize(1500, 920)
+                self._actor_team_id = actor_team_id
                 self._chart_widget: QWidget | None = None
                 self._film_payload: dict[str, Any] = {}
                 self._game_snaps: list[dict[str, Any]] = []
+                self._schedule_rows: list[dict[str, Any]] = []
                 self._playbook = self._load_playbook()
 
                 self.output = QTextEdit()
@@ -64,7 +72,7 @@ class MainWindowFactory:
                 tabs = QTabWidget()
                 tabs.addTab(self._org_tab(), "Organization")
                 tabs.addTab(self._game_tab(), "Game")
-                tabs.addTab(self._history_tab(), "League History")
+                tabs.addTab(self._league_tab(), "League")
                 tabs.addTab(self._film_tab(), "Film Room")
                 tabs.addTab(self._analytics_tab(), "Analytics")
                 if debug_gate.enabled:
@@ -79,13 +87,15 @@ class MainWindowFactory:
                 splitter.setSizes([760, 160])
                 layout.addWidget(splitter)
                 self.setCentralWidget(root)
-                self.statusBar().showMessage("Ready")
+                self.statusBar().showMessage(f"Ready | Team: {self._actor_team_id}")
                 clear_log = QPushButton("Clear Event Log")
                 clear_log.clicked.connect(self.output.clear)
                 self.statusBar().addPermanentWidget(clear_log)
 
                 self._init_game_controls()
                 self._refresh_org()
+                self._refresh_league_structure()
+                self._refresh_schedule()
                 self._refresh_standings()
                 self._refresh_game_state()
                 self._refresh_retained_games()
@@ -97,7 +107,7 @@ class MainWindowFactory:
                 return {pid: resolver.resolve_playbook_entry(pid) for pid in resolver.playbook_ids()}
 
             def _dispatch(self, action: ActionType, payload: dict[str, Any], *, log: bool = True, refresh: bool = False) -> ActionResult:
-                result = action_handler(ActionRequest(make_id("req"), action, payload, "T01"))
+                result = action_handler(ActionRequest(make_id("req"), action, payload, self._actor_team_id))
                 if log:
                     state = "OK" if result.success else "FAIL"
                     self.output.append(f"[{state}] {action.value}: {result.message}")
@@ -112,6 +122,8 @@ class MainWindowFactory:
                     QMessageBox.warning(self, "Action failed", result.message)
                 if refresh:
                     self._refresh_org()
+                    self._refresh_league_structure()
+                    self._refresh_schedule()
                     self._refresh_standings()
                     self._refresh_game_state()
                     self._refresh_retained_games()
@@ -148,19 +160,33 @@ class MainWindowFactory:
                 advance.clicked.connect(lambda: self._dispatch(ActionType.ADVANCE_WEEK, {}, refresh=True))
                 row.addWidget(refresh)
                 row.addWidget(advance)
+                row.addStretch(1)
                 self.org_text = QTextEdit()
                 self.org_text.setReadOnly(True)
+                self.org_text.setMinimumHeight(160)
+                self.roster_table = QTableWidget(0, 8)
+                self.roster_table.setHorizontalHeaderLabels(
+                    ["Player", "Name", "Pos", "Age", "Scout", "Scout Conf", "Coach", "Medical"]
+                )
+                self._configure_table(self.roster_table)
                 self.depth_table = QTableWidget(0, 3)
                 self.depth_table.setHorizontalHeaderLabels(["Slot", "Player", "Priority"])
                 self._configure_table(self.depth_table)
                 layout.addLayout(row)
                 layout.addWidget(self.org_text)
-                layout.addWidget(self.depth_table)
+                split = QSplitter()
+                split.setOrientation(Qt.Orientation.Horizontal)
+                split.addWidget(self.roster_table)
+                split.addWidget(self.depth_table)
+                split.setSizes([920, 520])
+                layout.addWidget(split)
                 return w
 
             def _game_tab(self):
                 w = QWidget()
                 layout = QVBoxLayout(w)
+                self.game_context = QLabel("No selected user game for this week.")
+                layout.addWidget(self.game_context)
                 controls = QWidget()
                 grid = QGridLayout(controls)
                 self.play_type = QComboBox()
@@ -229,16 +255,49 @@ class MainWindowFactory:
                 layout.addWidget(game_split)
                 return w
 
-            def _history_tab(self):
+            def _league_tab(self):
                 w = QWidget()
                 layout = QVBoxLayout(w)
-                refresh = QPushButton("Refresh Standings")
-                refresh.clicked.connect(self._refresh_standings)
+
+                row = QHBoxLayout()
+                self.current_week_label = QLabel("Current Week: -")
+                self.schedule_week = QSpinBox()
+                self.schedule_week.setRange(1, 24)
+                self.schedule_week.setValue(1)
+                refresh_schedule = QPushButton("Refresh Schedule")
+                refresh_schedule.clicked.connect(self._refresh_schedule)
+                set_user_game = QPushButton("Set Selected User Game")
+                set_user_game.clicked.connect(self._set_user_game)
+                refresh_standings = QPushButton("Refresh Standings")
+                refresh_standings.clicked.connect(self._refresh_standings)
+                row.addWidget(self.current_week_label)
+                row.addWidget(QLabel("Week"))
+                row.addWidget(self.schedule_week)
+                row.addWidget(refresh_schedule)
+                row.addWidget(set_user_game)
+                row.addWidget(refresh_standings)
+                row.addStretch(1)
+                layout.addLayout(row)
+
+                self.user_game_label = QLabel("User Game: -")
+                layout.addWidget(self.user_game_label)
+
+                self.schedule_table = QTableWidget(0, 5)
+                self.schedule_table.setHorizontalHeaderLabels(["Game ID", "Away", "Home", "Status", "User Game"])
+                self._configure_table(self.schedule_table)
+                layout.addWidget(self.schedule_table)
+
+                split = QSplitter()
+                split.setOrientation(Qt.Orientation.Horizontal)
                 self.standings = QTableWidget(0, 5)
                 self.standings.setHorizontalHeaderLabels(["Team", "W", "L", "T", "PD"])
                 self._configure_table(self.standings)
-                layout.addWidget(refresh)
-                layout.addWidget(self.standings)
+                split.addWidget(self.standings)
+                self.league_structure = QTextEdit()
+                self.league_structure.setReadOnly(True)
+                split.addWidget(self.league_structure)
+                split.setSizes([820, 520])
+                layout.addWidget(split)
                 return w
 
             def _film_tab(self):
@@ -406,6 +465,8 @@ class MainWindowFactory:
                     result = self._dispatch(ActionType.GET_ORG_OVERVIEW, {}, log=False)
                 if not result.success or not result.data:
                     self.org_text.setPlainText("No org data.")
+                    self.roster_table.setRowCount(0)
+                    self.depth_table.setRowCount(0)
                     return
                 data = result.data
                 lines = []
@@ -435,14 +496,111 @@ class MainWindowFactory:
                 for tx in data.get("transactions", [])[:12]:
                     lines.append(f"- W{tx['week']} {tx['tx_type']}: {tx['summary']}")
                 self.org_text.setPlainText("\n".join(lines))
-                depth = data.get("depth_chart", [])
+                roster_result = self._dispatch(
+                    ActionType.GET_TEAM_ROSTER,
+                    {"team_id": data.get("team_id", self._actor_team_id)},
+                    log=False,
+                )
+                roster_rows = roster_result.data.get("roster", []) if roster_result.success else []
+                self.roster_table.setRowCount(len(roster_rows))
+                for i, row in enumerate(roster_rows):
+                    values = [
+                        row.get("player_id", ""),
+                        row.get("name", ""),
+                        row.get("position", ""),
+                        row.get("age", ""),
+                        row.get("perceived_scout_estimate", ""),
+                        row.get("perceived_scout_confidence", ""),
+                        row.get("perceived_coach_estimate", ""),
+                        row.get("perceived_medical_estimate", ""),
+                    ]
+                    for j, value in enumerate(values):
+                        self.roster_table.setItem(i, j, QTableWidgetItem(str(value)))
+
+                depth = roster_result.data.get("depth_chart", []) if roster_result.success else []
                 self.depth_table.setRowCount(len(depth))
                 for i, row in enumerate(depth):
                     self.depth_table.setItem(i, 0, QTableWidgetItem(str(row.get("slot_role", ""))))
                     self.depth_table.setItem(i, 1, QTableWidgetItem(str(row.get("player_id", ""))))
                     self.depth_table.setItem(i, 2, QTableWidgetItem(str(row.get("priority", ""))))
 
+            def _refresh_league_structure(self) -> None:
+                result = self._dispatch(ActionType.GET_LEAGUE_STRUCTURE, {}, log=False)
+                if not result.success or not result.data:
+                    self.league_structure.setPlainText("No league structure data.")
+                    return
+                data = result.data
+                lines = [
+                    f"Season {data['season']} Week {data['week']} ({data['phase']})",
+                    f"Teams: {data['team_count']}",
+                    "",
+                ]
+                for conference in data.get("conferences", []):
+                    lines.append(f"{conference['conference_id']} ({conference['division_count']} divisions)")
+                    for division in conference.get("divisions", []):
+                        lines.append(f"  {division['division_id']} ({division['team_count']} teams)")
+                self.league_structure.setPlainText("\n".join(lines))
+
+            def _refresh_schedule(self) -> None:
+                week = int(self.schedule_week.value())
+                result = self._dispatch(ActionType.GET_WEEK_SCHEDULE, {"week": week}, log=False)
+                if not result.success or not result.data:
+                    self.schedule_table.setRowCount(0)
+                    self._schedule_rows = []
+                    self.user_game_label.setText("User Game: -")
+                    self.game_context.setText("No selected user game for this week.")
+                    return
+                data = result.data
+                current_week = int(data.get("current_week", week))
+                self.current_week_label.setText(f"Current Week: {current_week}")
+                self._current_week = current_week
+                rows = data.get("games", [])
+                self._schedule_rows = rows
+                self.schedule_table.setRowCount(len(rows))
+                for i, row in enumerate(rows):
+                    values = [
+                        row.get("game_id", ""),
+                        f"{row.get('away_team_name', '')} ({row.get('away_team_id', '')})",
+                        f"{row.get('home_team_name', '')} ({row.get('home_team_id', '')})",
+                        row.get("status", ""),
+                        "YES" if bool(row.get("is_user_game")) else "",
+                    ]
+                    for j, value in enumerate(values):
+                        self.schedule_table.setItem(i, j, QTableWidgetItem(str(value)))
+                self._update_user_game_context()
+
+            def _set_user_game(self) -> None:
+                selected = self.schedule_table.selectedItems()
+                if not selected:
+                    QMessageBox.information(self, "Select Game", "Select a game from the schedule table first.")
+                    return
+                row_index = selected[0].row()
+                if row_index < 0 or row_index >= len(self._schedule_rows):
+                    QMessageBox.information(self, "Select Game", "Selected row is invalid.")
+                    return
+                game_id = str(self._schedule_rows[row_index]["game_id"])
+                result = self._dispatch(
+                    ActionType.SET_USER_GAME,
+                    {"week": int(self.schedule_week.value()), "game_id": game_id},
+                )
+                if result.success:
+                    self._refresh_schedule()
+
+            def _update_user_game_context(self) -> None:
+                user_row = next((row for row in self._schedule_rows if bool(row.get("is_user_game"))), None)
+                if user_row is None:
+                    text = "No selected user game for this week."
+                else:
+                    text = (
+                        f"User Game: {user_row['game_id']} | "
+                        f"{user_row['away_team_name']} ({user_row['away_team_id']}) @ "
+                        f"{user_row['home_team_name']} ({user_row['home_team_id']}) | {user_row['status']}"
+                    )
+                self.user_game_label.setText(text)
+                self.game_context.setText(text)
+
             def _refresh_game_state(self) -> None:
+                self._update_user_game_context()
                 result = self._dispatch(ActionType.GET_GAME_STATE, {}, log=False)
                 if not result.success or not result.data:
                     self.game_summary.setText("No user game played this week.")
@@ -667,6 +825,7 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
         QHBoxLayout,
         QLabel,
         QLineEdit,
+        QMessageBox,
         QPushButton,
         QSpinBox,
         QVBoxLayout,
@@ -674,33 +833,42 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
 
     app = QApplication([])
 
+    class Context:
+        actor_team_id = "T01"
+
     def dispatch(action: ActionType, payload: dict[str, Any]) -> ActionResult:
-        return action_handler(ActionRequest(make_id("req"), action, payload, "T01"))
-
-    def parse_vector(text: str) -> list[int]:
-        values = [chunk.strip() for chunk in text.split(",") if chunk.strip()]
-        return [int(item) for item in values]
-
-    def parse_matrix(text: str) -> list[list[int]]:
-        rows = [row.strip() for row in text.split("|") if row.strip()]
-        return [parse_vector(row) for row in rows]
+        return action_handler(ActionRequest(make_id("req"), action, payload, Context.actor_team_id))
 
     class NewFranchiseWizard(QDialog):
+        PRESETS: dict[str, tuple[int, int, int, int]] = {
+            "Custom": (2, 2, 2, 18),
+            "Compact 8-Team": (2, 2, 2, 14),
+            "Balanced 16-Team": (2, 2, 4, 16),
+            "Standard 32-Team": (2, 4, 4, 18),
+        }
+
         def __init__(self) -> None:
             super().__init__()
             self.setWindowTitle("New Franchise Setup")
-            self.resize(720, 520)
+            self.resize(800, 580)
             self.created = False
-
             root = QVBoxLayout(self)
             form = QGridLayout()
             self.profile_name = QLineEdit("My Franchise")
             self.profile_id = QLineEdit("profile_main")
+            self.preset = QComboBox()
+            for preset in self.PRESETS:
+                self.preset.addItem(preset)
+            self.preset.currentTextChanged.connect(self._apply_preset)
             self.conference_count = QSpinBox()
             self.conference_count.setRange(1, 4)
             self.conference_count.setValue(2)
-            self.divisions_per_conf = QLineEdit("2,2")
-            self.teams_per_division = QLineEdit("2,2|2,2")
+            self.divisions_per_conf = QSpinBox()
+            self.divisions_per_conf.setRange(1, 8)
+            self.divisions_per_conf.setValue(2)
+            self.teams_per_division = QSpinBox()
+            self.teams_per_division.setRange(2, 16)
+            self.teams_per_division.setValue(2)
             self.players_per_team = QSpinBox()
             self.players_per_team.setRange(30, 75)
             self.players_per_team.setValue(53)
@@ -725,24 +893,27 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
             self.mode = QComboBox()
             for value in ["owner", "gm", "coach"]:
                 self.mode.addItem(value)
+            self.total = QLabel("")
             self.team_choice = QComboBox()
-            self.status = QLabel("Generate teams after entering setup values.")
+            self.status = QLabel("Pick preset/inputs, validate, then choose takeover team.")
 
             form.addWidget(QLabel("Profile Name"), 0, 0)
             form.addWidget(self.profile_name, 0, 1)
             form.addWidget(QLabel("Profile ID"), 0, 2)
             form.addWidget(self.profile_id, 0, 3)
-            form.addWidget(QLabel("Conference Count"), 1, 0)
-            form.addWidget(self.conference_count, 1, 1)
-            form.addWidget(QLabel("Divisions / Conference"), 1, 2)
-            form.addWidget(self.divisions_per_conf, 1, 3)
-            form.addWidget(QLabel("Teams / Division Matrix"), 2, 0)
-            form.addWidget(self.teams_per_division, 2, 1, 1, 3)
-            form.addWidget(QLabel("Players / Team"), 3, 0)
+            form.addWidget(QLabel("Preset"), 1, 0)
+            form.addWidget(self.preset, 1, 1)
+            form.addWidget(QLabel("Conferences"), 1, 2)
+            form.addWidget(self.conference_count, 1, 3)
+            form.addWidget(QLabel("Divisions/Conference"), 2, 0)
+            form.addWidget(self.divisions_per_conf, 2, 1)
+            form.addWidget(QLabel("Teams/Division"), 2, 2)
+            form.addWidget(self.teams_per_division, 2, 3)
+            form.addWidget(QLabel("Players/Team"), 3, 0)
             form.addWidget(self.players_per_team, 3, 1)
             form.addWidget(QLabel("Cap"), 3, 2)
             form.addWidget(self.cap_amount, 3, 3)
-            form.addWidget(QLabel("Schedule Policy"), 4, 0)
+            form.addWidget(QLabel("Schedule"), 4, 0)
             form.addWidget(self.schedule_policy, 4, 1)
             form.addWidget(QLabel("Regular Weeks"), 4, 2)
             form.addWidget(self.regular_season_weeks, 4, 3)
@@ -750,12 +921,14 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
             form.addWidget(self.ruleset, 5, 1)
             form.addWidget(QLabel("Difficulty"), 5, 2)
             form.addWidget(self.difficulty, 5, 3)
-            form.addWidget(QLabel("Talent Profile"), 6, 0)
+            form.addWidget(QLabel("Talent"), 6, 0)
             form.addWidget(self.talent, 6, 1)
             form.addWidget(QLabel("Mode"), 6, 2)
             form.addWidget(self.mode, 6, 3)
-            form.addWidget(QLabel("Takeover Team"), 7, 0)
-            form.addWidget(self.team_choice, 7, 1, 1, 3)
+            form.addWidget(QLabel("Topology"), 7, 0)
+            form.addWidget(self.total, 7, 1, 1, 3)
+            form.addWidget(QLabel("Takeover Team"), 8, 0)
+            form.addWidget(self.team_choice, 8, 1, 1, 3)
             root.addLayout(form)
             root.addWidget(self.status)
 
@@ -771,11 +944,32 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
             buttons.addWidget(cancel_btn)
             root.addLayout(buttons)
 
+            self.conference_count.valueChanged.connect(self._update_total)
+            self.divisions_per_conf.valueChanged.connect(self._update_total)
+            self.teams_per_division.valueChanged.connect(self._update_total)
+            self._update_total()
+
+        def _apply_preset(self, preset: str) -> None:
+            conf, divs, teams, weeks = self.PRESETS[preset]
+            self.conference_count.setValue(conf)
+            self.divisions_per_conf.setValue(divs)
+            self.teams_per_division.setValue(teams)
+            self.regular_season_weeks.setValue(weeks)
+
+        def _update_total(self) -> None:
+            conf = int(self.conference_count.value())
+            divs = int(self.divisions_per_conf.value())
+            teams = int(self.teams_per_division.value())
+            self.total.setText(f"{conf} x {divs} x {teams} = {conf * divs * teams} total teams")
+
         def _setup_payload(self) -> dict[str, Any]:
+            conf = int(self.conference_count.value())
+            divs = int(self.divisions_per_conf.value())
+            teams = int(self.teams_per_division.value())
             return {
-                "conference_count": int(self.conference_count.value()),
-                "divisions_per_conference": parse_vector(self.divisions_per_conf.text()),
-                "teams_per_division": parse_matrix(self.teams_per_division.text()),
+                "conference_count": conf,
+                "divisions_per_conference": [divs for _ in range(conf)],
+                "teams_per_division": [[teams for _ in range(divs)] for _ in range(conf)],
                 "roster_policy": {
                     "players_per_team": int(self.players_per_team.value()),
                     "active_gameday_min": 22,
@@ -799,14 +993,13 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
             }
 
         def _validate(self) -> None:
-            try:
-                payload = self._setup_payload()
-            except Exception as exc:
-                self.status.setText(f"Setup parse failed: {exc}")
+            profile_id = self.profile_id.text().strip()
+            if not profile_id:
+                self.status.setText("Profile ID is required.")
                 return
             result = dispatch(
                 ActionType.VALIDATE_LEAGUE_SETUP,
-                {"profile_id": self.profile_id.text().strip(), "setup": payload},
+                {"profile_id": profile_id, "setup": self._setup_payload()},
             )
             if not result.success:
                 self.status.setText(result.message)
@@ -814,10 +1007,7 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
             self.team_choice.clear()
             for team_id in result.data.get("team_candidates", []):
                 self.team_choice.addItem(team_id)
-            if result.data.get("ok"):
-                self.status.setText("Validation passed. Select takeover team and create save.")
-            else:
-                self.status.setText(f"Validation failed with {len(result.data.get('issues', []))} issues.")
+            self.status.setText("Validation passed." if result.data.get("ok") else "Validation failed.")
 
         def _create(self) -> None:
             if self.team_choice.count() == 0:
@@ -846,8 +1036,8 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
         def __init__(self) -> None:
             super().__init__()
             self.setWindowTitle("Franchise Profiles")
-            self.resize(560, 180)
-            self.selected_profile: str | None = None
+            self.resize(600, 200)
+            self.selected_team_id: str = "T01"
 
             root = QVBoxLayout(self)
             form = QFormLayout()
@@ -901,13 +1091,15 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
             if not result.success:
                 self.status.setText(result.message)
                 return
-            self.selected_profile = profile_id
+            self.selected_team_id = str(result.data.get("user_team_id", "T01"))
             self.accept()
 
         def _delete(self) -> None:
             if self.profile_combo.count() == 0:
                 return
             profile_id = str(self.profile_combo.currentData())
+            if QMessageBox.question(self, "Delete Profile", f"Delete profile '{profile_id}'?") != QMessageBox.StandardButton.Yes:
+                return
             result = dispatch(ActionType.DELETE_PROFILE, {"profile_id": profile_id})
             if not result.success:
                 self.status.setText(result.message)
@@ -918,7 +1110,12 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
     if picker.exec() != QDialog.DialogCode.Accepted:
         return
 
+    Context.actor_team_id = picker.selected_team_id
     factory = MainWindowFactory()
-    window = factory.create(action_handler=action_handler, debug_gate=DebugGate(enabled=debug_mode))
+    window = factory.create(
+        action_handler=action_handler,
+        debug_gate=DebugGate(enabled=debug_mode),
+        actor_team_id=picker.selected_team_id,
+    )
     window.show()
     app.exec()

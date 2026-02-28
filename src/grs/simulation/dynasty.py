@@ -445,6 +445,172 @@ class DynastyRuntime:
                 },
             )
 
+        if action == ActionType.GET_LEAGUE_STRUCTURE:
+            self._require_active_profile_action()
+            assert self.org_state is not None
+            conference_map: dict[str, dict[str, Any]] = {}
+            for team in self.org_state.teams:
+                conference = conference_map.setdefault(
+                    team.conference_id,
+                    {"conference_id": team.conference_id, "divisions": {}},
+                )
+                division_map = conference["divisions"]
+                division = division_map.setdefault(
+                    team.division_id,
+                    {"division_id": team.division_id, "teams": []},
+                )
+                division["teams"].append({"team_id": team.team_id, "team_name": team.name})
+            conference_payload: list[dict[str, Any]] = []
+            for conference in sorted(conference_map.values(), key=lambda item: str(item["conference_id"])):
+                divisions: list[dict[str, Any]] = []
+                for division in sorted(conference["divisions"].values(), key=lambda item: str(item["division_id"])):
+                    divisions.append(
+                        {
+                            "division_id": division["division_id"],
+                            "team_count": len(division["teams"]),
+                            "teams": sorted(division["teams"], key=lambda item: str(item["team_id"])),
+                        }
+                    )
+                conference_payload.append(
+                    {
+                        "conference_id": conference["conference_id"],
+                        "division_count": len(divisions),
+                        "divisions": divisions,
+                    }
+                )
+            return ActionResult(
+                request.request_id,
+                True,
+                "league structure",
+                data={
+                    "season": self.org_state.season,
+                    "week": self.org_state.week,
+                    "phase": self.org_state.phase,
+                    "conferences": conference_payload,
+                    "team_count": len(self.org_state.teams),
+                },
+            )
+
+        if action == ActionType.GET_TEAM_ROSTER:
+            self._require_active_profile_action()
+            assert self.org_state is not None
+            team_id = str(request.payload["team_id"]) if "team_id" in request.payload else self.user_team_id
+            try:
+                team = self._team(team_id)
+            except StopIteration:
+                return ActionResult(request.request_id, False, f"team '{team_id}' not found")
+            cards = self.org_engine.perceived_cards_for_team(self.org_state, team.team_id)
+            perceived_by_player = {card.player_id: card for card in cards}
+            roster_rows = []
+            for player in sorted(team.roster, key=lambda p: (p.position, p.name, p.player_id)):
+                card = perceived_by_player.get(player.player_id)
+                scout = card.scout_metrics[0] if card and card.scout_metrics else None
+                coach = card.coach_metrics[0] if card and card.coach_metrics else None
+                medical = card.medical_metrics[0] if card and card.medical_metrics else None
+                roster_rows.append(
+                    {
+                        "player_id": player.player_id,
+                        "name": player.name,
+                        "position": player.position,
+                        "age": player.age,
+                        "morale": round(player.morale, 3),
+                        "perceived_scout_estimate": None if scout is None else round(float(scout.estimate), 3),
+                        "perceived_scout_confidence": None if scout is None else round(float(scout.confidence), 3),
+                        "perceived_coach_estimate": None if coach is None else round(float(coach.estimate), 3),
+                        "perceived_medical_estimate": None if medical is None else round(float(medical.estimate), 3),
+                    }
+                )
+            depth = sorted(team.depth_chart, key=lambda d: (d.slot_role, d.priority))
+            return ActionResult(
+                request.request_id,
+                True,
+                "team roster",
+                data={
+                    "team_id": team.team_id,
+                    "team_name": team.name,
+                    "conference_id": team.conference_id,
+                    "division_id": team.division_id,
+                    "roster": roster_rows,
+                    "depth_chart": [asdict(d) for d in depth],
+                },
+            )
+
+        if action == ActionType.GET_WEEK_SCHEDULE:
+            self._require_active_profile_action()
+            assert self.org_state is not None
+            assert self.store is not None
+            season = self.org_state.season
+            week = int(request.payload["week"]) if "week" in request.payload else self.org_state.week
+            if week < 1:
+                return ActionResult(request.request_id, False, "week must be >= 1")
+            entries = self.store.get_schedule_for_week(season, week)
+            if not entries:
+                return ActionResult(
+                    request.request_id,
+                    True,
+                    "schedule",
+                    data={"season": season, "week": week, "current_week": self.org_state.week, "games": []},
+                )
+            team_names = {team.team_id: team.name for team in self.org_state.teams}
+            games = []
+            for entry in entries:
+                games.append(
+                    {
+                        "game_id": entry.game_id,
+                        "season": entry.season,
+                        "week": entry.week,
+                        "home_team_id": entry.home_team_id,
+                        "away_team_id": entry.away_team_id,
+                        "home_team_name": team_names.get(entry.home_team_id, entry.home_team_id),
+                        "away_team_name": team_names.get(entry.away_team_id, entry.away_team_id),
+                        "status": entry.status,
+                        "is_user_game": entry.is_user_game,
+                    }
+                )
+            return ActionResult(
+                request.request_id,
+                True,
+                "schedule",
+                data={
+                    "season": season,
+                    "week": week,
+                    "current_week": self.org_state.week,
+                    "games": games,
+                },
+            )
+
+        if action == ActionType.SET_USER_GAME:
+            self._require_active_profile_action()
+            assert self.org_state is not None
+            assert self.store is not None
+            if "game_id" not in request.payload:
+                return ActionResult(request.request_id, False, "game_id is required")
+            season = self.org_state.season
+            week = int(request.payload["week"]) if "week" in request.payload else self.org_state.week
+            game_id = str(request.payload["game_id"])
+            entries = self.store.get_schedule_for_week(season, week)
+            if not entries:
+                return ActionResult(request.request_id, False, f"no schedule entries for season {season} week {week}")
+            target = next((entry for entry in entries if entry.game_id == game_id), None)
+            if target is None:
+                return ActionResult(request.request_id, False, f"game '{game_id}' is not scheduled in week {week}")
+            if self.user_team_id not in {target.home_team_id, target.away_team_id}:
+                return ActionResult(
+                    request.request_id,
+                    False,
+                    f"game '{game_id}' does not include user team '{self.user_team_id}'",
+                )
+            self.store.set_user_game_for_week(season=season, week=week, game_id=game_id)
+            for entry in self.org_state.schedule:
+                if entry.season == season and entry.week == week:
+                    entry.is_user_game = entry.game_id == game_id
+            return ActionResult(
+                request.request_id,
+                True,
+                "user game selected",
+                data={"season": season, "week": week, "game_id": game_id},
+            )
+
         profile_free_actions = {
             ActionType.LIST_PROFILES,
             ActionType.CREATE_PROFILE,
@@ -794,7 +960,7 @@ class DynastyRuntime:
 
         if action == ActionType.GET_FILM_ROOM_GAME:
             assert self.store is not None
-            game_id = request.payload["game_id"] if "game_id" in request.payload else None
+            game_id = str(request.payload["game_id"]) if "game_id" in request.payload else ""
             if not game_id:
                 return ActionResult(request.request_id, False, "game_id required")
             return ActionResult(request.request_id, True, "film room", data=self.store.load_film_room_game(game_id))

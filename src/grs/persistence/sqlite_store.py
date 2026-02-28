@@ -431,6 +431,17 @@ class AuthoritativeStore:
         with self.connect() as conn:
             conn.execute("UPDATE schedule SET status = ? WHERE game_id = ?", (status, game_id))
 
+    def set_user_game_for_week(self, *, season: int, week: int, game_id: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE schedule SET is_user_game = 0 WHERE season = ? AND week = ?",
+                (season, week),
+            )
+            conn.execute(
+                "UPDATE schedule SET is_user_game = 1 WHERE season = ? AND week = ? AND game_id = ?",
+                (season, week, game_id),
+            )
+
     def register_game(
         self,
         game_id: str,
