@@ -33,6 +33,9 @@ Add Narrative Engine as an interpretation layer that consumes events from 1.0 sy
 5. Hard-stop on integrity failures: stop immediately and emit forensic artifact.
 6. Outcome-focused specs: define outputs and guarantees, not rigid implementation scripts.
 7. Modular boundaries by contract: systems interact through explicit interfaces only.
+8. No fallback rating defaults in simulation: no `OVR` defaulting and no substitute-path calculations when required inputs are missing/invalid.
+9. Missing/invalid calculation inputs are integrity failures: fail hard and emit forensic artifact; never continue with guessed values.
+10. Tuning must be modular and externalized: constants/rates/weights are data-driven and editable without introducing hidden guardrails/floors/ceilings in resolver code.
 
 ## Difficulty philosophy
 
@@ -208,12 +211,15 @@ Narrative in 2.0 changes perception/pressure, never football physics.
 - RNG correctness: injected random source with substream spawning per simulation context
 - Modding 1.0: data-pack only (schema-validated JSON/CSV), no arbitrary Python plugin execution
 - Scope 1.0: single-player local franchise
+- Tuning rule: tuning values live in versioned data resources; gameplay math cannot silently clamp to rescue invalid model states.
+- Failure rule: engine code must not \"default and continue\" when contract-required inputs are absent.
 
 ## Reliability and integrity requirements
 
 - Engine integrity failures must hard-stop and persist forensic artifact snapshot
 - Season rollover integrity checks are transactional
 - No silent fallback when constraints are violated (cap/roster/depth chart/state integrity)
+- No silent fallback when football/org calculation inputs are incomplete; hard-stop with explicit error code and context
 
 ## Testing and quality gates
 
@@ -241,3 +247,15 @@ Tooling baseline:
 - Preserve contract boundaries and auditability over quick hacks
 - Prefer explicit failure with forensic context over hidden recovery
 - Add complexity only when it increases explanatory power, accountability, and derivability
+
+## Pre-Phasal Engine Gate (Mandatory)
+
+Before full phasal engine implementation continues, the team must lock and review:
+
+1. Football input contract completeness
+2. Trait taxonomy and coverage requirements
+3. Externalized resource libraries (formations/personnel/play concepts/coaching decisions)
+4. Data quality and schema validation rules
+5. Interactive command/response contract for play sim
+
+The authoritative source for this gate is `NORTHSTAR_FOOTBALL.md`.

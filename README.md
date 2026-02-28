@@ -22,3 +22,8 @@ python -m grs.cli --weeks 2 --play-user-game
 - Retained-game film room artifacts + deep log retention policy
 - CSV + Parquet export pipeline from analytics marts
 - Deterministic replay harness for seed-based regression checks
+
+## North Star Docs
+
+- `NORTHSTAR.md` - project-wide intent, constraints, and non-negotiables
+- `NORTHSTAR_FOOTBALL.md` - football-layer input/data/contracts charter (required before deeper phasal expansion)
