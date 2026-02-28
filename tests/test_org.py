@@ -34,3 +34,15 @@ def test_ownership_pressure_can_trigger_coaching_change():
 
     assert after >= before - 1
     assert league.transactions
+
+
+def test_cap_and_roster_constraints_raise():
+    league = build_default_league(team_count=2)
+    team = league.teams[0]
+    team.cap_space = -1
+
+    diff = default_difficulty_profiles()[Difficulty.PRO]
+    engine = OrganizationalEngine(seeded_random(7), diff)
+
+    with pytest.raises(ValueError):
+        engine.validate_franchise_constraints(team)

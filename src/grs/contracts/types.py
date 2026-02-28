@@ -29,6 +29,22 @@ class Difficulty(str, Enum):
     ALL_MADDEN = "all_madden"
 
 
+class ActionType(str, Enum):
+    ADVANCE_WEEK = "advance_week"
+    PLAY_USER_GAME = "play_user_game"
+    PLAY_SNAP = "play_snap"
+    SIM_DRIVE = "sim_drive"
+    LOAD_RETAINED = "load_retained"
+    DEBUG_TRUTH = "debug_truth"
+    GET_ORG_OVERVIEW = "get_org_overview"
+    GET_STANDINGS = "get_standings"
+    GET_GAME_STATE = "get_game_state"
+    GET_RETAINED_GAMES = "get_retained_games"
+    GET_FILM_ROOM_GAME = "get_film_room_game"
+    GET_ANALYTICS_SERIES = "get_analytics_series"
+    SET_PLAYCALL = "set_playcall"
+
+
 class RandomSource(Protocol):
     def rand(self) -> float: ...
 
@@ -79,6 +95,18 @@ class ParameterizedIntent:
     tempo: str = "normal"
     aggression: str = "balanced"
     allows_audible: bool = True
+    play_type: PlayType = PlayType.PASS
+
+
+@dataclass(slots=True)
+class PlaycallRequest:
+    team_id: str
+    personnel: str
+    formation: str
+    offensive_concept: str
+    defensive_concept: str
+    tempo: str = "normal"
+    aggression: str = "balanced"
     play_type: PlayType = PlayType.PASS
 
 
@@ -184,7 +212,7 @@ class NarrativeEvent:
 @dataclass(slots=True)
 class ActionRequest:
     request_id: str
-    action_type: str
+    action_type: ActionType | str
     payload: dict[str, Any]
     actor_team_id: str
 
@@ -250,6 +278,84 @@ class RetentionPolicy:
     retain_instant_classics: bool = True
     retain_rivalry_games: bool = False
     retain_record_games: bool = False
+
+
+@dataclass(slots=True)
+class DepthChartAssignment:
+    team_id: str
+    player_id: str
+    slot_role: str
+    priority: int
+    active_flag: bool
+
+
+@dataclass(slots=True)
+class ScheduleEntry:
+    game_id: str
+    season: int
+    week: int
+    home_team_id: str
+    away_team_id: str
+    status: str
+    is_user_game: bool
+
+
+@dataclass(slots=True)
+class TeamStanding:
+    team_id: str
+    wins: int = 0
+    losses: int = 0
+    ties: int = 0
+    points_for: int = 0
+    points_against: int = 0
+
+    @property
+    def point_diff(self) -> int:
+        return self.points_for - self.points_against
+
+
+@dataclass(slots=True)
+class GameSessionState:
+    game_id: str
+    season: int
+    week: int
+    home_team_id: str
+    away_team_id: str
+    quarter: int
+    clock_seconds: int
+    home_score: int
+    away_score: int
+    possession_team_id: str
+    down: int
+    distance: int
+    yard_line: int
+    drive_index: int
+    timeouts_home: int
+    timeouts_away: int
+    active_injuries: dict[str, str] = field(default_factory=dict)
+    active_penalties: list[PenaltyArtifact] = field(default_factory=list)
+    is_overtime: bool = False
+    completed: bool = False
+
+
+@dataclass(slots=True)
+class WeekSimulationResult:
+    season: int
+    week: int
+    finalized_game_ids: list[str]
+    standings_delta: dict[str, dict[str, int]]
+    injuries: list[str]
+    transactions: list[str]
+    integrity_checks: list[str]
+
+
+@dataclass(slots=True)
+class LeagueSnapshotRef:
+    snapshot_id: str
+    season: int
+    week: int
+    created_at: datetime
+    blob_path: str
 
 
 @dataclass(slots=True)

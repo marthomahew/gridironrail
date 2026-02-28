@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol, cast
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QWidget
 
 
 class ChartAdapter(Protocol):
-    def create_team_trend_widget(self, title: str, x: list[str], y: list[float]): ...
+    def create_team_trend_widget(self, title: str, x: list[str], y: list[float]) -> QWidget: ...
 
 
 @dataclass(slots=True)
 class MatplotlibChartAdapter:
     """Matplotlib-in-Qt adapter; swappable behind ChartAdapter contract."""
 
-    def create_team_trend_widget(self, title: str, x: list[str], y: list[float]):
+    def create_team_trend_widget(self, title: str, x: list[str], y: list[float]) -> QWidget:
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
         from matplotlib.figure import Figure
 
@@ -22,4 +25,5 @@ class MatplotlibChartAdapter:
         ax.set_title(title)
         ax.grid(alpha=0.3)
         fig.tight_layout()
-        return FigureCanvasQTAgg(fig)
+        canvas = FigureCanvasQTAgg(fig)
+        return cast("QWidget", canvas)

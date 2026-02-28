@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Callable
+from typing import Callable, DefaultDict
 
 from grs.contracts import NarrativeEvent
 
@@ -11,7 +11,7 @@ NarrativeHandler = Callable[[NarrativeEvent], None]
 class EventBus:
     def __init__(self) -> None:
         self._narrative_handlers: list[NarrativeHandler] = []
-        self._counter = defaultdict(int)
+        self._counter: DefaultDict[str, int] = defaultdict(int)
 
     def subscribe_narrative(self, handler: NarrativeHandler) -> None:
         self._narrative_handlers.append(handler)

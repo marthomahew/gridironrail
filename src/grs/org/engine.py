@@ -3,13 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
-from grs.contracts import DifficultyProfile, NarrativeEvent, RandomSource
+from grs.contracts import LeagueSnapshotRef, NarrativeEvent, ScheduleEntry, TeamStanding
 from grs.core import make_id, now_utc
 from grs.org.entities import (
     CapLedgerEntry,
     Contract,
     ContractYear,
     Franchise,
+    LeagueStandingBook,
     LeagueWeek,
     Player,
     Prospect,
@@ -26,6 +27,9 @@ class LeagueState:
     week: int
     phase: str
     teams: list[Franchise]
+    standings: LeagueStandingBook = field(default_factory=LeagueStandingBook)
+    schedule: list[ScheduleEntry] = field(default_factory=list)
+    snapshots: list[LeagueSnapshotRef] = field(default_factory=list)
     transactions: list[TransactionRecord] = field(default_factory=list)
     cap_ledger: list[CapLedgerEntry] = field(default_factory=list)
     trades: list[TradeRecord] = field(default_factory=list)
@@ -35,7 +39,7 @@ class LeagueState:
 
 
 class OrganizationalEngine:
-    def __init__(self, rand: RandomSource, difficulty: DifficultyProfile) -> None:
+    def __init__(self, rand, difficulty) -> None:
         self._rand = rand
         self._difficulty = difficulty
 
@@ -69,6 +73,50 @@ class OrganizationalEngine:
             )
         )
 
+    def offseason_gate(self, state: LeagueState) -> str:
+        if state.phase != "offseason":
+            return "in_season"
+        if state.week <= 2:
+            return "re_signing"
+        if state.week <= 5:
+            return "free_agency"
+        if state.week <= 7:
+            return "draft"
+        return "post_draft"
+
+    def ensure_depth_chart_valid(self, team: Franchise) -> None:
+        active = [d for d in team.depth_chart if d.active_flag]
+        required = {"QB1", "RB1", "WR1", "WR2", "WR3", "TE1", "LT", "LG", "C", "RG", "RT"}
+        present = {d.slot_role for d in active}
+        missing = required - present
+        if missing:
+            raise ValueError(f"team {team.team_id} missing required depth chart slots: {sorted(missing)}")
+
+    def validate_franchise_constraints(self, team: Franchise) -> None:
+        if len(team.roster) > 53:
+            raise ValueError(f"team {team.team_id} violates roster limit: {len(team.roster)}")
+        if team.cap_space < 0:
+            raise ValueError(f"team {team.team_id} exceeds cap by {-team.cap_space}")
+
+    def apply_game_result(self, state: LeagueState, home_team_id: str, away_team_id: str, home_score: int, away_score: int) -> None:
+        home = state.standings.ensure_team(home_team_id)
+        away = state.standings.ensure_team(away_team_id)
+
+        home.points_for += home_score
+        home.points_against += away_score
+        away.points_for += away_score
+        away.points_against += home_score
+
+        if home_score > away_score:
+            home.wins += 1
+            away.losses += 1
+        elif away_score > home_score:
+            away.wins += 1
+            home.losses += 1
+        else:
+            home.ties += 1
+            away.ties += 1
+
     def generate_draft_class(self, state: LeagueState, size: int = 224) -> None:
         if state.phase != "offseason":
             return
@@ -84,19 +132,6 @@ class OrganizationalEngine:
                     draft_grade_truth=max(35.0, min(95.0, 60.0 + (self._rand.rand() * 40.0 - 20.0))),
                 )
             )
-        state.narrative_events.append(
-            NarrativeEvent(
-                event_id=make_id("ne"),
-                time=now_utc(),
-                scope="org",
-                event_type="draft_class_generated",
-                actors=[],
-                claims=[f"generated {size} prospects"],
-                evidence_handles=[p.prospect_id for p in state.prospects[:10]],
-                severity="normal",
-                confidentiality_tier="internal",
-            )
-        )
 
     def run_draft_round(self, state: LeagueState, picks_per_round: int = 32) -> None:
         if state.phase != "offseason" or not state.prospects:
@@ -104,17 +139,15 @@ class OrganizationalEngine:
 
         ordered = sorted(state.teams, key=lambda t: t.owner.patience)
         for team in ordered[:picks_per_round]:
+            self.validate_franchise_constraints(team)
             scouts = [s for s in team.staff if s.role == "Scout"]
-            cards = [
-                (
-                    prospect,
-                    self._perceived_draft_score(prospect, scouts),
-                )
-                for prospect in state.prospects
-            ]
+            cards = [(prospect, self._perceived_draft_score(prospect, scouts)) for prospect in state.prospects]
             cards.sort(key=lambda pair: pair[1], reverse=True)
-            selected, _ = cards[0]
+            selected, perceived_score = cards[0]
             state.prospects.remove(selected)
+            if len(team.roster) >= 53:
+                raise ValueError(f"cannot draft for {team.team_id}: roster full")
+
             player = Player(
                 player_id=make_id("ply"),
                 team_id=team.team_id,
@@ -133,13 +166,21 @@ class OrganizationalEngine:
                 player_id=player.player_id,
                 team_id=team.team_id,
                 years=[
-                    ContractYear(year=state.season + i, base_salary=1_200_000 + (i * 500_000), bonus_prorated=250_000, guaranteed=750_000)
+                    ContractYear(
+                        year=state.season + i,
+                        base_salary=1_200_000 + (i * 500_000),
+                        bonus_prorated=250_000,
+                        guaranteed=750_000,
+                    )
                     for i in range(4)
                 ],
                 signed_date=date.today(),
             )
             state.contracts.append(contract)
-            self._book_cap(state, team.team_id, state.season, "rookie_contract", contract.years[0].base_salary + contract.years[0].bonus_prorated)
+            year_one = contract.years[0].base_salary + contract.years[0].bonus_prorated
+            team.cap_space -= year_one
+            self._book_cap(state, team.team_id, state.season, "rookie_contract", year_one)
+            self.validate_franchise_constraints(team)
             state.transactions.append(
                 TransactionRecord(
                     tx_id=make_id("tx"),
@@ -148,6 +189,10 @@ class OrganizationalEngine:
                     tx_type="draft",
                     summary=f"{team.name} selected {player.name} ({player.position})",
                     team_id=team.team_id,
+                    causality_context={
+                        "scout_quality": round(sum(s.evaluation for s in scouts) / len(scouts), 3) if scouts else 0.5,
+                        "perceived_score": round(perceived_score, 3),
+                    },
                 )
             )
 
@@ -155,20 +200,26 @@ class OrganizationalEngine:
         if state.phase != "offseason":
             return
         for player in list(free_agents):
-            offers: list[tuple[Franchise, int]] = []
+            offers: list[tuple[Franchise, int, float]] = []
             for team in state.teams:
+                self.validate_franchise_constraints(team)
                 need_bonus = 1.0 + (0.2 if self._position_need(team, player.position) else 0.0)
                 bid = int((player.overall_truth * 120_000) * need_bonus / self._difficulty.negotiation_friction_multiplier)
-                if bid < team.cap_space:
-                    offers.append((team, bid))
+                leverage = (1.0 - team.owner.patience) * self._difficulty.ownership_pressure_multiplier
+                if bid <= team.cap_space:
+                    offers.append((team, bid, leverage))
             if not offers:
                 continue
-            offers.sort(key=lambda x: x[1], reverse=True)
-            winner, bid = offers[0]
+            offers.sort(key=lambda x: (x[1], x[2]), reverse=True)
+            winner, bid, leverage = offers[0]
+            if len(winner.roster) >= 53:
+                raise ValueError(f"cannot sign free agent for {winner.team_id}: roster full")
+
             winner.roster.append(player)
             winner.cap_space -= bid
             player.team_id = winner.team_id
             self._book_cap(state, winner.team_id, state.season, "free_agency", bid)
+            self.validate_franchise_constraints(winner)
             state.transactions.append(
                 TransactionRecord(
                     tx_id=make_id("tx"),
@@ -177,6 +228,7 @@ class OrganizationalEngine:
                     tx_type="free_agency",
                     summary=f"{winner.name} signed {player.name} for {bid}",
                     team_id=winner.team_id,
+                    causality_context={"offer": bid, "owner_leverage": round(leverage, 3)},
                 )
             )
             free_agents.remove(player)
@@ -194,7 +246,6 @@ class OrganizationalEngine:
         a_player = self._rand.choice(team_a.roster)
         b_player = self._rand.choice(team_b.roster)
 
-        # Imperfect information: evaluation uses perceived score with noise.
         a_val = self._perceived_player_value(a_player)
         b_val = self._perceived_player_value(b_player)
         leverage = (1.0 - team_a.owner.patience) * self._difficulty.ownership_pressure_multiplier
@@ -217,6 +268,21 @@ class OrganizationalEngine:
                     assets_to=[b_player.player_id],
                 )
             )
+            state.transactions.append(
+                TransactionRecord(
+                    tx_id=make_id("tx"),
+                    season=state.season,
+                    week=state.week,
+                    tx_type="trade",
+                    summary=f"{team_a.name} traded {a_player.name} to {team_b.name} for {b_player.name}",
+                    team_id=team_a.team_id,
+                    causality_context={
+                        "a_value": round(a_val, 2),
+                        "b_value": round(b_val, 2),
+                        "owner_pressure": round(leverage, 2),
+                    },
+                )
+            )
 
     def develop_players(self, state: LeagueState) -> None:
         for team in state.teams:
@@ -226,7 +292,6 @@ class OrganizationalEngine:
                 age_penalty = 0.0
                 if player.age >= 30:
                     age_penalty = (player.age - 29) * 0.7 * self._difficulty.aging_variance_multiplier
-
                 growth = (dev_quality * 2.0) - age_penalty + ((self._rand.rand() * 2.0 - 1.0) * 2.2)
                 player.overall_truth = max(20.0, min(99.0, player.overall_truth + growth))
                 player.age += 1 if state.phase == "offseason" and state.week == 1 else 0
@@ -259,6 +324,7 @@ class OrganizationalEngine:
                             tx_type="coaching_change",
                             summary=f"{team.name} fired {fired.name}",
                             team_id=team.team_id,
+                            causality_context={"pressure": round(pressure, 3), "fire_chance": round(fire_chance, 3)},
                         )
                     )
 
@@ -282,7 +348,6 @@ class OrganizationalEngine:
         ]
 
     def ai_rank_players(self, cards: list) -> list:
-        # AI consumes perceived cards only.
         return sorted(
             cards,
             key=lambda c: (
@@ -315,3 +380,6 @@ class OrganizationalEngine:
                 amount=amount,
             )
         )
+
+    def standings_dict(self, state: LeagueState) -> dict[str, TeamStanding]:
+        return dict(state.standings.entries)

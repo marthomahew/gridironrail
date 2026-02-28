@@ -5,7 +5,7 @@ from typing import Any
 
 try:
     import duckdb
-except ModuleNotFoundError:  # pragma: no cover - exercised via runtime environments without duckdb
+except ModuleNotFoundError:  # pragma: no cover
     duckdb = None  # type: ignore[assignment]
 
 
@@ -19,10 +19,18 @@ class ExportService:
         output_dir.mkdir(parents=True, exist_ok=True)
         outputs: list[Path] = []
         with duckdb.connect(str(self.analytics_db)) as conn:
-            outputs.extend(self._export_table(conn, "mart_game_summaries", output_dir / "game_summaries"))
-            outputs.extend(self._export_table(conn, "mart_transactions", output_dir / "transactions"))
-            outputs.extend(self._export_table(conn, "mart_cap_history", output_dir / "cap_history"))
-            outputs.extend(self._export_table(conn, "mart_play_events", output_dir / "play_events"))
+            tables = [
+                "mart_game_summaries",
+                "mart_transactions",
+                "mart_cap_history",
+                "mart_play_events",
+                "mart_traditional_stats",
+                "mart_pressure_coverage",
+                "mart_turnover_causality",
+                "mart_shared_responsibility",
+            ]
+            for table in tables:
+                outputs.extend(self._export_table(conn, table, output_dir / table))
         return outputs
 
     def _export_table(self, conn: Any, table: str, stem: Path) -> list[Path]:

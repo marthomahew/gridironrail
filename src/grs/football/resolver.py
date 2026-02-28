@@ -367,8 +367,8 @@ class FootballResolver:
         return "normal_play"
 
     def _random_from_scp(self, scp: SnapContextPackage):
-        # Explicit substream split keeps replay/testing deterministic while allowing mode invariance.
-        return self._random_source.spawn(f"{scp.game_id}:{scp.play_id}:{scp.mode.value}")
+        # Mode is intentionally excluded so play/sim/off-screen share the same physics distribution.
+        return self._random_source.spawn(f"{scp.game_id}:{scp.play_id}")
 
 
 class FootballEngine:

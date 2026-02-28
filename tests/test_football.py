@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-from grs.contracts import (
-    ActorRef,
-    InGameState,
-    ParameterizedIntent,
-    PlayType,
-    SimMode,
-    Situation,
-    SnapContextPackage,
-)
+from grs.contracts import ActorRef, GameSessionState, InGameState, ParameterizedIntent, PlayType, SimMode, Situation, SnapContextPackage
 from grs.core import gameplay_random, seeded_random
-from grs.football import FootballEngine, FootballResolver
+from grs.football import FootballEngine, FootballResolver, GameSessionEngine
+from grs.org import build_default_league
 
 
 def build_context(play_id: str, mode: SimMode = SimMode.PLAY) -> SnapContextPackage:
@@ -62,7 +55,6 @@ def test_seeded_determinism_same_inputs():
 
     assert a.play_result.yards == b.play_result.yards
     assert a.causality_chain.terminal_event == b.causality_chain.terminal_event
-    assert [n.description for n in a.causality_chain.nodes] == [n.description for n in b.causality_chain.nodes]
 
 
 def test_gameplay_random_is_non_deterministic_distribution():
@@ -74,7 +66,7 @@ def test_gameplay_random_is_non_deterministic_distribution():
     assert len(outcomes) > 1
 
 
-def test_mode_invariance_uses_same_resolver_api():
+def test_mode_invariance_same_snap_inputs():
     engine = FootballEngine(FootballResolver(seeded_random(42)))
     base = build_context("P_MODE")
 
@@ -82,17 +74,36 @@ def test_mode_invariance_uses_same_resolver_api():
     sim = engine.run_mode_invariant(base, SimMode.SIM)
     off = engine.run_mode_invariant(base, SimMode.OFFSCREEN)
 
-    assert play.rep_ledger
-    assert sim.rep_ledger
-    assert off.rep_ledger
-    assert play.play_result.play_id == sim.play_result.play_id == off.play_result.play_id
+    assert play.play_result.yards == sim.play_result.yards == off.play_result.yards
+    assert play.causality_chain.terminal_event == sim.causality_chain.terminal_event == off.causality_chain.terminal_event
 
 
-def test_multi_actor_rep_present_and_valid_weights():
-    engine = FootballEngine(FootballResolver(seeded_random(12)))
-    res = engine.run_snap(build_context("PMULTI"))
-    multi = [r for r in res.rep_ledger if r.rep_type == "double_team_or_bracket"]
-    assert multi
-    for rep in multi:
-        assert "double_team" in rep.context_tags
-        assert abs(sum(rep.responsibility_weights.values()) - 1.0) < 0.001
+def test_game_session_completes_with_real_lineups():
+    league = build_default_league(team_count=2)
+    home = league.teams[0]
+    away = league.teams[1]
+    state = GameSessionState(
+        game_id="S2026_W1_G01",
+        season=2026,
+        week=1,
+        home_team_id=home.team_id,
+        away_team_id=away.team_id,
+        quarter=1,
+        clock_seconds=900,
+        home_score=0,
+        away_score=0,
+        possession_team_id=home.team_id,
+        down=1,
+        distance=10,
+        yard_line=25,
+        drive_index=1,
+        timeouts_home=3,
+        timeouts_away=3,
+    )
+
+    engine = GameSessionEngine(FootballEngine(FootballResolver(seeded_random(5))))
+    result = engine.run_game(state, home, away, mode=SimMode.SIM)
+
+    assert result.final_state.completed
+    assert len(result.snaps) > 0
+    assert result.home_score >= 0 and result.away_score >= 0

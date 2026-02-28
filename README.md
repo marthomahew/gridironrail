@@ -1,6 +1,6 @@
 # Gridiron Rail: Sundays (GR:S)
 
-Data-first pro football dynasty simulation skeleton for 1.0.
+Data-first pro football dynasty simulation vertical slice for 1.0.
 
 ## Quick start
 
@@ -9,13 +9,16 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e .[dev]
 pytest
-python -m grs.cli
+python -m grs.cli --weeks 2 --play-user-game
 ```
 
-## Notes
+## What this slice includes
 
-- Gameplay randomness is non-deterministic by default.
-- Seeded determinism is exposed for tests/dev only.
-- UI is PySide6 Qt Widgets with chart adapter abstraction.
-- Authoritative store: SQLite.
-- Analytics store: DuckDB.
+- Full weekly slate simulation (8-team league, 18-week schedule)
+- Complete game session engine (multi-snap game flow, score/clock/drive progression)
+- Shared football resolver across play/sim/off-screen modes
+- Organizational constraints (cap/roster/depth-chart validation)
+- Authoritative SQLite + incremental DuckDB analytics ETL
+- Retained-game film room artifacts + deep log retention policy
+- CSV + Parquet export pipeline from analytics marts
+- Deterministic replay harness for seed-based regression checks

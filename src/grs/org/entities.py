@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
+from grs.contracts import DepthChartAssignment, TeamStanding
+
 
 @dataclass(slots=True)
 class Owner:
@@ -85,6 +87,7 @@ class Franchise:
     identity: TeamIdentityProfile
     staff: list[StaffMember] = field(default_factory=list)
     roster: list[Player] = field(default_factory=list)
+    depth_chart: list[DepthChartAssignment] = field(default_factory=list)
     cap_space: int = 255_000_000
 
 
@@ -103,6 +106,7 @@ class TransactionRecord:
     tx_type: str
     summary: str
     team_id: str
+    causality_context: dict[str, float | str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -123,3 +127,13 @@ class TradeRecord:
     to_team_id: str
     assets_from: list[str]
     assets_to: list[str]
+
+
+@dataclass(slots=True)
+class LeagueStandingBook:
+    entries: dict[str, TeamStanding] = field(default_factory=dict)
+
+    def ensure_team(self, team_id: str) -> TeamStanding:
+        if team_id not in self.entries:
+            self.entries[team_id] = TeamStanding(team_id=team_id)
+        return self.entries[team_id]

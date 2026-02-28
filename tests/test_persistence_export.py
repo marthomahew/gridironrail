@@ -3,9 +3,9 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-import pytest
+import duckdb
 
-from grs.contracts import ActionRequest
+from grs.contracts import ActionRequest, ActionType
 from grs.core import make_id
 from grs.simulation import DynastyRuntime
 
@@ -14,46 +14,58 @@ def _count(conn: sqlite3.Connection, query: str, params: tuple = ()) -> int:
     return int(conn.execute(query, params).fetchone()[0])
 
 
-def test_retention_non_retained_purges_deep_logs(tmp_path: Path):
+def test_full_week_execution_finalizes_all_games_and_no_orphans(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=7)
-    runtime.org_state.phase = "regular"
-    runtime.handle_action(ActionRequest(make_id("req"), "play_snap", {}, "USER_TEAM"))
+    res = runtime.handle_action(ActionRequest(make_id("req"), ActionType.ADVANCE_WEEK, {}, "T01"))
+    assert res.success
 
     with sqlite3.connect(runtime.paths.sqlite_path) as conn:
-        game_id = conn.execute("SELECT game_id FROM games ORDER BY created_at DESC LIMIT 1").fetchone()[0]
-        retained = conn.execute("SELECT retained FROM games WHERE game_id = ?", (game_id,)).fetchone()[0]
-        reps = _count(
+        season, week = 2026, 1
+        scheduled = _count(conn, "SELECT COUNT(*) FROM schedule WHERE season = ? AND week = ?", (season, week))
+        finalized = _count(conn, "SELECT COUNT(*) FROM schedule WHERE season = ? AND week = ? AND status = 'final'", (season, week))
+        assert scheduled == finalized
+
+        orphan = _count(
             conn,
-            "SELECT COUNT(*) FROM rep_ledger WHERE play_id IN (SELECT play_id FROM play_results WHERE game_id = ?)",
-            (game_id,),
+            """
+            SELECT COUNT(*)
+            FROM game_state gs
+            LEFT JOIN games g ON g.game_id = gs.game_id
+            WHERE g.game_id IS NULL
+            """,
         )
-        assert retained == 0
-        assert reps == 0
+        assert orphan == 0
 
 
-def test_retention_playoff_keeps_deep_logs(tmp_path: Path):
+def test_retention_policy_keeps_retained_and_purges_non_retained(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=8)
-    runtime.org_state.phase = "postseason"
-    runtime.org_state.week = 2
-    runtime.handle_action(ActionRequest(make_id("req"), "play_snap", {}, "USER_TEAM"))
+    runtime.handle_action(ActionRequest(make_id("req"), ActionType.ADVANCE_WEEK, {}, "T01"))
 
     with sqlite3.connect(runtime.paths.sqlite_path) as conn:
-        game_id = conn.execute("SELECT game_id FROM games ORDER BY created_at DESC LIMIT 1").fetchone()[0]
-        retained = conn.execute("SELECT retained FROM games WHERE game_id = ?", (game_id,)).fetchone()[0]
-        reps = _count(
+        retained_game_ids = [r[0] for r in conn.execute("SELECT game_id FROM games WHERE retained = 1").fetchall()]
+        non_retained_game_ids = [r[0] for r in conn.execute("SELECT game_id FROM games WHERE retained = 0").fetchall()]
+
+        assert retained_game_ids
+        assert non_retained_game_ids
+
+        retained_reps = _count(
             conn,
             "SELECT COUNT(*) FROM rep_ledger WHERE play_id IN (SELECT play_id FROM play_results WHERE game_id = ?)",
-            (game_id,),
+            (retained_game_ids[0],),
         )
-        assert retained == 1
-        assert reps > 0
+        non_retained_reps = _count(
+            conn,
+            "SELECT COUNT(*) FROM rep_ledger WHERE play_id IN (SELECT play_id FROM play_results WHERE game_id = ?)",
+            (non_retained_game_ids[0],),
+        )
+
+        assert retained_reps > 0
+        assert non_retained_reps == 0
 
 
 def test_export_csv_parquet_row_count_parity(tmp_path: Path):
-    duckdb = pytest.importorskip("duckdb")
     runtime = DynastyRuntime(root=tmp_path, seed=11)
-    runtime.handle_action(ActionRequest(make_id("req"), "play_snap", {}, "USER_TEAM"))
-    runtime.store.save_transactions(runtime.org_state.transactions)
+    runtime.handle_action(ActionRequest(make_id("req"), ActionType.ADVANCE_WEEK, {}, "T01"))
 
     outputs = runtime.export()
     csv_files = [p for p in outputs if p.suffix == ".csv"]
