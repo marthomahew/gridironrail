@@ -1,0 +1,165 @@
+{
+  "manifest": {
+    "resource_type": "playbook_entry",
+    "schema_version": "1.0",
+    "resource_version": "1.0.0",
+    "generated_at": "2026-02-28T00:00:00Z",
+    "checksum": "d9a1e849f1d7c15ee65fc31ce187e9320782f24dba4b92c130e80b98a942c369"
+  },
+  "resources": [
+    {
+      "id": "run_inside_zone",
+      "play_type": "run",
+      "family": "run_core",
+      "personnel_id": "11",
+      "formation_id": "singleback",
+      "offensive_concept_id": "inside_zone",
+      "defensive_concept_id": "base_over",
+      "assignment_template_id": "scrimmage_base",
+      "branch_trigger_ids": [
+        "pursuit_break"
+      ],
+      "tags": [
+        "early_down",
+        "balanced"
+      ]
+    },
+    {
+      "id": "run_goal_line",
+      "play_type": "run",
+      "family": "run_core",
+      "personnel_id": "21",
+      "formation_id": "goal_line",
+      "offensive_concept_id": "inside_zone",
+      "defensive_concept_id": "base_over",
+      "assignment_template_id": "scrimmage_base",
+      "branch_trigger_ids": [
+        "goal_line_push"
+      ],
+      "tags": [
+        "short_yardage"
+      ]
+    },
+    {
+      "id": "pass_spacing",
+      "play_type": "pass",
+      "family": "pass_core",
+      "personnel_id": "11",
+      "formation_id": "gun_trips",
+      "offensive_concept_id": "spacing",
+      "defensive_concept_id": "cover3_match",
+      "assignment_template_id": "scrimmage_base",
+      "branch_trigger_ids": [
+        "scramble",
+        "sack"
+      ],
+      "tags": [
+        "early_down",
+        "balanced"
+      ]
+    },
+    {
+      "id": "pass_dagger",
+      "play_type": "pass",
+      "family": "pass_core",
+      "personnel_id": "11",
+      "formation_id": "gun_trips",
+      "offensive_concept_id": "dagger",
+      "defensive_concept_id": "quarters",
+      "assignment_template_id": "scrimmage_base",
+      "branch_trigger_ids": [
+        "scramble",
+        "deep_shot"
+      ],
+      "tags": [
+        "third_and_long",
+        "aggressive"
+      ]
+    },
+    {
+      "id": "punt_safe",
+      "play_type": "punt",
+      "family": "punt_core",
+      "personnel_id": "punt",
+      "formation_id": "punt_spread",
+      "offensive_concept_id": "punt_safe",
+      "defensive_concept_id": "punt_return_safe",
+      "assignment_template_id": "punt_base",
+      "branch_trigger_ids": [
+        "fake_alert",
+        "return_break"
+      ],
+      "tags": [
+        "fourth_down"
+      ]
+    },
+    {
+      "id": "kickoff_sky",
+      "play_type": "kickoff",
+      "family": "kickoff_core",
+      "personnel_id": "kickoff",
+      "formation_id": "kickoff_standard",
+      "offensive_concept_id": "kickoff_sky",
+      "defensive_concept_id": "kickoff_return",
+      "assignment_template_id": "kickoff_base",
+      "branch_trigger_ids": [
+        "contain_break"
+      ],
+      "tags": [
+        "special_teams"
+      ]
+    },
+    {
+      "id": "field_goal_standard",
+      "play_type": "field_goal",
+      "family": "field_goal_core",
+      "personnel_id": "field_goal",
+      "formation_id": "field_goal_heavy",
+      "offensive_concept_id": "field_goal_unit",
+      "defensive_concept_id": "field_goal_block",
+      "assignment_template_id": "field_goal_base",
+      "branch_trigger_ids": [
+        "block_edge"
+      ],
+      "tags": [
+        "special_teams",
+        "scoring"
+      ]
+    },
+    {
+      "id": "extra_point_standard",
+      "play_type": "extra_point",
+      "family": "field_goal_core",
+      "personnel_id": "extra_point",
+      "formation_id": "field_goal_heavy",
+      "offensive_concept_id": "field_goal_unit",
+      "defensive_concept_id": "field_goal_block",
+      "assignment_template_id": "field_goal_base",
+      "branch_trigger_ids": [
+        "block_edge"
+      ],
+      "tags": [
+        "special_teams",
+        "scoring"
+      ]
+    },
+    {
+      "id": "two_point_mesh",
+      "play_type": "two_point",
+      "family": "two_point_core",
+      "personnel_id": "two_point",
+      "formation_id": "gun_trips",
+      "offensive_concept_id": "two_point_mesh",
+      "defensive_concept_id": "cover3_match",
+      "assignment_template_id": "two_point_base",
+      "branch_trigger_ids": [
+        "scramble",
+        "goal_line_push"
+      ],
+      "tags": [
+        "conversion",
+        "high_leverage"
+      ]
+    }
+  ]
+}

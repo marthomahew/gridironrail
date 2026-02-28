@@ -272,6 +272,62 @@ MIGRATIONS: list[tuple[int, str]] = [
         );
         """,
     ),
+    (
+        3,
+        """
+        ALTER TABLE trait_catalog ADD COLUMN status TEXT NOT NULL DEFAULT 'core_now';
+
+        CREATE TABLE IF NOT EXISTS matchup_snapshots (
+            snapshot_id TEXT PRIMARY KEY,
+            play_id TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            graph_json TEXT NOT NULL,
+            FOREIGN KEY (play_id) REFERENCES play_results(play_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS phase_transitions (
+            transition_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            play_id TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            FOREIGN KEY (play_id) REFERENCES play_results(play_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS contest_resolutions (
+            contest_id TEXT PRIMARY KEY,
+            play_id TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            family TEXT NOT NULL,
+            score REAL NOT NULL,
+            offense_score REAL NOT NULL,
+            defense_score REAL NOT NULL,
+            contributor_json TEXT NOT NULL,
+            trait_json TEXT NOT NULL,
+            evidence_json TEXT NOT NULL,
+            variance_hint REAL NOT NULL,
+            FOREIGN KEY (play_id) REFERENCES play_results(play_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS rules_adjudications (
+            play_id TEXT PRIMARY KEY,
+            score_event TEXT,
+            notes_json TEXT NOT NULL,
+            next_down INTEGER NOT NULL,
+            next_distance INTEGER NOT NULL,
+            next_possession_team_id TEXT NOT NULL,
+            clock_delta INTEGER NOT NULL,
+            FOREIGN KEY (play_id) REFERENCES play_results(play_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS evidence_refs (
+            handle TEXT PRIMARY KEY,
+            play_id TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            metadata_json TEXT NOT NULL,
+            FOREIGN KEY (play_id) REFERENCES play_results(play_id) ON DELETE CASCADE
+        );
+        """,
+    ),
 ]
 
 

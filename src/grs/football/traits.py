@@ -3,102 +3,91 @@ from __future__ import annotations
 import hashlib
 from typing import Iterable
 
-from grs.contracts import TraitCatalogEntry, ValidationIssue
+from grs.contracts import TraitCatalogEntry, TraitStatus, ValidationIssue
 
-TRAIT_DEFS: list[tuple[str, str, str]] = [
-    ("height", "physical", "Height profile"),
-    ("weight", "physical", "Weight profile"),
-    ("length", "physical", "Limb length"),
-    ("strength", "physical", "Functional strength"),
-    ("burst", "physical", "Burst ability"),
-    ("top_speed", "physical", "Maximum speed"),
-    ("acceleration", "physical", "Acceleration"),
-    ("agility", "physical", "Agility"),
-    ("flexibility", "physical", "Flexibility"),
-    ("balance", "physical", "Balance"),
-    ("stamina", "physical", "Stamina"),
-    ("recovery", "physical", "Recovery rate"),
-    ("short_area_change", "movement", "Short-area change"),
-    ("long_arc_bend", "movement", "Long-arc bend"),
-    ("footwork_precision", "movement", "Footwork precision"),
-    ("body_control", "movement", "Body control"),
-    ("redirection", "movement", "Redirection"),
-    ("anchor_stability", "movement", "Anchor stability"),
-    ("leverage_control", "movement", "Leverage control"),
-    ("momentum_management", "movement", "Momentum management"),
-    ("stop_start_efficiency", "movement", "Stop-start efficiency"),
-    ("pursuit_angles", "movement", "Pursuit angle quality"),
-    ("awareness", "mental", "Awareness"),
-    ("processing_speed", "mental", "Processing speed"),
-    ("recognition", "mental", "Recognition"),
-    ("anticipation", "mental", "Anticipation"),
-    ("discipline", "mental", "Discipline"),
-    ("decision_quality", "mental", "Decision quality"),
-    ("risk_tolerance", "mental", "Risk tolerance"),
-    ("communication", "mental", "Communication"),
-    ("composure", "mental", "Composure"),
-    ("adaptability", "mental", "Adaptability"),
-    ("memory", "mental", "Memory"),
-    ("consistency", "mental", "Consistency"),
-    ("short_accuracy", "qb", "Short throw accuracy"),
-    ("intermediate_accuracy", "qb", "Intermediate throw accuracy"),
-    ("deep_accuracy", "qb", "Deep throw accuracy"),
-    ("throw_power", "qb", "Throw power"),
-    ("release_quickness", "qb", "Release quickness"),
-    ("platform_stability", "qb", "Platform stability"),
-    ("pocket_sense", "qb", "Pocket sense"),
-    ("progression_depth", "qb", "Progression depth"),
-    ("pressure_response", "qb", "Pressure response"),
+CORE_TRAIT_DEFS: list[tuple[str, str, str]] = [
+    ("strength", "athletic", "Functional strength"),
+    ("burst", "athletic", "Explosive first-step burst"),
+    ("top_speed", "athletic", "Maximum speed"),
+    ("acceleration", "athletic", "Acceleration profile"),
+    ("agility", "athletic", "Change-of-direction agility"),
+    ("balance", "athletic", "Contact and body balance"),
+    ("stamina", "athletic", "Sustained effort stamina"),
+    ("body_control", "movement", "Body control through contact"),
+    ("leverage_control", "movement", "Pad-level and leverage control"),
+    ("momentum_management", "movement", "Momentum control in transition"),
+    ("pursuit_angles", "movement", "Pursuit and tracking angles"),
+    ("awareness", "cognition", "Field awareness"),
+    ("processing_speed", "cognition", "Mental processing speed"),
+    ("recognition", "cognition", "Pattern and key recognition"),
+    ("anticipation", "cognition", "Anticipatory reaction"),
+    ("discipline", "cognition", "Discipline and assignment fidelity"),
+    ("decision_quality", "cognition", "Decision quality under pressure"),
+    ("communication", "cognition", "Communication quality"),
+    ("communication_secondary", "cognition", "Coverage communication"),
+    ("composure", "cognition", "Composure under stress"),
+    ("short_accuracy", "qb", "Short throw placement"),
+    ("intermediate_accuracy", "qb", "Intermediate throw placement"),
+    ("deep_accuracy", "qb", "Deep throw placement"),
+    ("throw_power", "qb", "Throw velocity/power"),
+    ("throw_touch", "qb", "Trajectory and touch control"),
+    ("release_quickness", "qb", "Release speed"),
+    ("pocket_sense", "qb", "Pocket movement and pressure sense"),
     ("timing_precision", "qb", "Timing precision"),
-    ("hands", "ball", "Hands"),
+    ("play_action_craft", "qb", "Play-action sell and sequencing"),
+    ("blitz_identification", "qb", "Pre/post-snap blitz identification"),
+    ("cadence_control", "qb", "Cadence and count manipulation"),
+    ("snap_operation", "qb", "Snap exchange and operation integrity"),
+    ("hands", "ball", "Hands reliability"),
     ("catch_radius", "ball", "Catch radius"),
-    ("contested_catch", "ball", "Contested catch"),
+    ("contested_catch", "ball", "Contested catch skill"),
     ("ball_tracking", "ball", "Ball tracking"),
-    ("route_fidelity", "ball", "Route fidelity"),
+    ("route_fidelity", "ball", "Route detail fidelity"),
     ("release_quality", "ball", "Release quality"),
-    ("yac_vision", "ball", "YAC vision"),
+    ("yac_vision", "ball", "Vision after catch/contact"),
     ("ball_security", "ball", "Ball security"),
-    ("pass_set", "blocking", "Pass set quality"),
+    ("pass_set", "blocking", "Pass protection set quality"),
     ("hand_placement", "blocking", "Hand placement"),
-    ("mirror_skill", "blocking", "Mirror skill"),
-    ("anchor", "blocking", "Anchor"),
-    ("recovery_blocking", "blocking", "Recovery blocking"),
-    ("run_block_drive", "blocking", "Run-block drive"),
-    ("run_block_positioning", "blocking", "Run-block positioning"),
-    ("combo_coordination", "blocking", "Combo coordination"),
-    ("second_level_targeting", "blocking", "Second-level targeting"),
-    ("hold_risk_control", "blocking", "Hold risk control"),
-    ("get_off", "front7", "Get-off"),
-    ("hand_fighting", "front7", "Hand fighting"),
+    ("mirror_skill", "blocking", "Pass-pro mirror skill"),
+    ("anchor", "blocking", "Anchor against power"),
+    ("recovery_blocking", "blocking", "Recovery ability when initially beaten"),
+    ("run_block_drive", "blocking", "Run block drive"),
+    ("run_block_positioning", "blocking", "Run block positioning"),
+    ("combo_coordination", "blocking", "Combo block coordination"),
+    ("get_off", "front7", "Pass rush get-off"),
+    ("hand_fighting", "front7", "Hand usage in trench contests"),
     ("rush_plan_diversity", "front7", "Rush plan diversity"),
-    ("edge_contain", "front7", "Edge contain"),
-    ("block_shed", "front7", "Block shed"),
+    ("edge_contain", "front7", "Edge contain discipline"),
+    ("block_shed", "front7", "Block shedding"),
     ("gap_integrity", "front7", "Gap integrity"),
-    ("stack_shed", "front7", "Stack shed"),
+    ("stack_shed", "front7", "Stack and shed"),
     ("closing_speed", "front7", "Closing speed"),
     ("tackle_power", "front7", "Tackle power"),
     ("tackle_form", "front7", "Tackle form"),
-    ("man_footwork", "coverage", "Man footwork"),
-    ("zone_spacing", "coverage", "Zone spacing"),
-    ("route_match_skill", "coverage", "Route match skill"),
+    ("man_footwork", "coverage", "Man coverage footwork"),
+    ("route_match_skill", "coverage", "Route-matching skill"),
     ("leverage_management", "coverage", "Leverage management"),
     ("transition_speed", "coverage", "Transition speed"),
-    ("ball_skills_defense", "coverage", "Ball skills defense"),
+    ("ball_skills_defense", "coverage", "Defensive ball skills"),
     ("press_technique", "coverage", "Press technique"),
-    ("recovery_speed", "coverage", "Recovery speed"),
-    ("communication_secondary", "coverage", "Secondary communication"),
+    ("jam_strength", "coverage", "Jam force and redirection strength"),
+    ("recovery_speed", "coverage", "Recovery speed in coverage"),
     ("dpi_risk_control", "coverage", "DPI risk control"),
-    ("soft_tissue_risk", "availability", "Soft tissue risk"),
+    ("kick_power", "special_teams", "Kick distance power"),
+    ("kick_accuracy", "special_teams", "Kick directional accuracy"),
+    ("hang_time_control", "special_teams", "Kick hang-time control"),
+    ("soft_tissue_risk", "availability", "Soft tissue injury risk"),
     ("contact_injury_risk", "availability", "Contact injury risk"),
     ("re_injury_risk", "availability", "Re-injury risk"),
     ("durability", "availability", "Durability"),
     ("pain_tolerance", "availability", "Pain tolerance"),
-    ("load_tolerance", "availability", "Load tolerance"),
     ("recovery_rate", "availability", "Recovery rate"),
-    ("volatility_profile", "availability", "Volatility profile"),
+    ("volatility_profile", "availability", "Performance volatility profile"),
 ]
 
-assert len(TRAIT_DEFS) == 90
+_codes = [code for code, _, _ in CORE_TRAIT_DEFS]
+if len(_codes) != len(set(_codes)):
+    raise ValueError("duplicate trait_code detected in CORE_TRAIT_DEFS")
 
 
 def canonical_trait_catalog(version: str = "1.0") -> list[TraitCatalogEntry]:
@@ -111,14 +100,15 @@ def canonical_trait_catalog(version: str = "1.0") -> list[TraitCatalogEntry]:
             required=True,
             description=desc,
             category=category,
+            status=_trait_status(code),
             version=version,
         )
-        for code, category, desc in TRAIT_DEFS
+        for code, category, desc in CORE_TRAIT_DEFS
     ]
 
 
 def required_trait_codes() -> list[str]:
-    return [c for c, _, _ in TRAIT_DEFS]
+    return [c for c, _, _ in CORE_TRAIT_DEFS]
 
 
 def generate_player_traits(
@@ -203,3 +193,14 @@ def _derive_trait_value(
         base = 100.0 - (volatility_truth * 100.0) + jitter
 
     return max(1.0, min(99.0, round(base, 3)))
+
+
+def _trait_status(code: str) -> TraitStatus:
+    reserved = {
+        "play_action_craft",
+        "cadence_control",
+        "snap_operation",
+        "jam_strength",
+        "volatility_profile",
+    }
+    return TraitStatus.RESERVED_PHASAL if code in reserved else TraitStatus.CORE_NOW

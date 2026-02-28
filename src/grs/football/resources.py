@@ -6,7 +6,16 @@ from dataclasses import dataclass
 from importlib import resources
 from typing import Any
 
-from grs.contracts import ResourceManifest, ValidationError, ValidationIssue
+from grs.contracts import (
+    AssignmentTemplate,
+    PlayType,
+    PlaybookEntry,
+    ResourceManifest,
+    TraitRoleMappingEntry,
+    TraitStatus,
+    ValidationError,
+    ValidationIssue,
+)
 
 EXPECTED_SCHEMA_VERSION = "1.0"
 
@@ -18,6 +27,8 @@ class ResourceBundle:
 
 
 class ResourceResolver:
+    """Data-pack backed registry adapter for football runtime resources."""
+
     def __init__(self, bundle_overrides: dict[str, dict[str, Any]] | None = None) -> None:
         self._bundle_overrides = bundle_overrides or {}
         self._personnel = self._load_bundle("personnel_packages.json", "personnel_package")
@@ -26,6 +37,10 @@ class ResourceResolver:
         self._defense = self._load_bundle("concepts_defense.json", "concept_defense")
         self._policies = self._load_bundle("coaching_policies.json", "coaching_policy")
         self._trait_influences = self._load_bundle("trait_influences.json", "trait_influence_profile")
+        self._playbook = self._load_bundle("playbook_entries.json", "playbook_entry")
+        self._assignment_templates = self._load_bundle("assignment_templates.json", "assignment_template")
+        self._trait_role_mapping = self._load_bundle("trait_role_mapping.json", "trait_role_mapping")
+        self._rules_profiles = self._load_bundle("rules_profiles.json", "rules_profile")
         self._validate_cross_references()
 
     def resolve_personnel(self, personnel_id: str) -> dict[str, Any]:
@@ -47,6 +62,62 @@ class ResourceResolver:
     def resolve_trait_influence(self, play_type: str) -> dict[str, Any]:
         return self._resolve(self._trait_influences, play_type, "UNKNOWN_TRAIT_INFLUENCE_PLAYTYPE")
 
+    def resolve_playbook_entry(self, play_id: str) -> PlaybookEntry:
+        raw = self._resolve(self._playbook, play_id, "UNKNOWN_PLAYBOOK_ENTRY")
+        try:
+            play_type = PlayType(str(raw["play_type"]))
+        except ValueError as exc:
+            issue = ValidationIssue(
+                code="INVALID_PLAYBOOK_PLAY_TYPE",
+                severity="blocking",
+                field_path=f"playbook.{play_id}.play_type",
+                entity_id=play_id,
+                message=f"unsupported play_type '{raw.get('play_type')}'",
+            )
+            raise ValidationError([issue]) from exc
+        return PlaybookEntry(
+            play_id=play_id,
+            play_type=play_type,
+            family=str(raw.get("family", "")),
+            personnel_id=str(raw.get("personnel_id", "")),
+            formation_id=str(raw.get("formation_id", "")),
+            offensive_concept_id=str(raw.get("offensive_concept_id", "")),
+            defensive_concept_id=str(raw.get("defensive_concept_id", "")),
+            assignment_template_id=str(raw.get("assignment_template_id", "")),
+            branch_trigger_ids=[str(v) for v in raw.get("branch_trigger_ids", [])],
+            tags=[str(v) for v in raw.get("tags", [])],
+        )
+
+    def resolve_assignment_template(self, template_id: str) -> AssignmentTemplate:
+        raw = self._resolve(self._assignment_templates, template_id, "UNKNOWN_ASSIGNMENT_TEMPLATE")
+        return AssignmentTemplate(
+            template_id=template_id,
+            offense_roles=[str(v) for v in raw.get("offense_roles", [])],
+            defense_roles=[str(v) for v in raw.get("defense_roles", [])],
+            pairing_hints=[dict(item) for item in raw.get("pairing_hints", []) if isinstance(item, dict)],
+            default_technique=str(raw.get("default_technique", "balanced")),
+        )
+
+    def resolve_trait_role_mappings(self) -> list[TraitRoleMappingEntry]:
+        rows: list[TraitRoleMappingEntry] = []
+        for row in self._trait_role_mapping.resources_by_id.values():
+            status_raw = str(row.get("status", TraitStatus.CORE_NOW.value))
+            status = TraitStatus(status_raw)
+            rows.append(
+                TraitRoleMappingEntry(
+                    trait_code=str(row.get("trait_code", "")),
+                    status=status,
+                    phase=str(row.get("phase", "")),
+                    contest_family=str(row.get("contest_family", "")),
+                    role_group=str(row.get("role_group", "")),
+                    evidence_tag=str(row.get("evidence_tag", "")),
+                )
+            )
+        return rows
+
+    def resolve_rules_profile(self, rules_profile_id: str) -> dict[str, Any]:
+        return self._resolve(self._rules_profiles, rules_profile_id, "UNKNOWN_RULES_PROFILE")
+
     def resource_manifests(self) -> list[ResourceManifest]:
         return [
             self._personnel.manifest,
@@ -55,6 +126,10 @@ class ResourceResolver:
             self._defense.manifest,
             self._policies.manifest,
             self._trait_influences.manifest,
+            self._playbook.manifest,
+            self._assignment_templates.manifest,
+            self._trait_role_mapping.manifest,
+            self._rules_profiles.manifest,
         ]
 
     def personnel_ids(self) -> list[str]:
@@ -72,8 +147,14 @@ class ResourceResolver:
     def policy_ids(self) -> list[str]:
         return sorted(self._policies.resources_by_id.keys())
 
-    def trait_influence_play_types(self) -> list[str]:
-        return sorted(self._trait_influences.resources_by_id.keys())
+    def playbook_ids(self) -> list[str]:
+        return sorted(self._playbook.resources_by_id.keys())
+
+    def assignment_template_ids(self) -> list[str]:
+        return sorted(self._assignment_templates.resources_by_id.keys())
+
+    def rules_profile_ids(self) -> list[str]:
+        return sorted(self._rules_profiles.resources_by_id.keys())
 
     def _resolve(self, bundle: ResourceBundle, key: str, error_code: str) -> dict[str, Any]:
         if key not in bundle.resources_by_id:
@@ -178,6 +259,7 @@ class ResourceResolver:
 
     def _validate_cross_references(self) -> None:
         issues: list[ValidationIssue] = []
+
         for formation_id, formation in self._formations.resources_by_id.items():
             allowed = formation.get("allowed_personnel", [])
             if not isinstance(allowed, list):
@@ -205,7 +287,7 @@ class ResourceResolver:
 
         for policy_id, policy in self._policies.resources_by_id.items():
             defaults = policy.get("defaults")
-            if not isinstance(defaults, dict):
+            if defaults is not None and not isinstance(defaults, dict):
                 issues.append(
                     ValidationIssue(
                         code="INVALID_POLICY_DEFAULTS",
@@ -215,90 +297,164 @@ class ResourceResolver:
                         message="defaults must be an object",
                     )
                 )
+            playbook_by_posture = policy.get("playbook_by_posture")
+            if not isinstance(playbook_by_posture, dict):
+                issues.append(
+                    ValidationIssue(
+                        code="INVALID_POLICY_PLAYBOOK_MAP",
+                        severity="blocking",
+                        field_path=f"policy.{policy_id}.playbook_by_posture",
+                        entity_id=policy_id,
+                        message="playbook_by_posture must be an object",
+                    )
+                )
                 continue
-            for posture, config in defaults.items():
-                if not isinstance(config, dict):
+            for posture, play_ids in playbook_by_posture.items():
+                if not isinstance(play_ids, list) or not play_ids:
                     issues.append(
                         ValidationIssue(
-                            code="INVALID_POLICY_POSTURE",
+                            code="INVALID_POLICY_PLAYLIST",
                             severity="blocking",
-                            field_path=f"policy.{policy_id}.defaults.{posture}",
+                            field_path=f"policy.{policy_id}.playbook_by_posture.{posture}",
                             entity_id=policy_id,
-                            message="posture config must be an object",
+                            message="posture playlist must be a non-empty list",
                         )
                     )
                     continue
-                self._check_policy_reference(
-                    issues,
-                    policy_id,
-                    posture,
-                    config,
-                    "personnel",
-                    self._personnel.resources_by_id,
+                for play_id in play_ids:
+                    if str(play_id) not in self._playbook.resources_by_id:
+                        issues.append(
+                            ValidationIssue(
+                                code="POLICY_PLAYBOOK_REF_MISSING",
+                                severity="blocking",
+                                field_path=f"policy.{policy_id}.playbook_by_posture.{posture}",
+                                entity_id=policy_id,
+                                message=f"references unknown playbook id '{play_id}'",
+                            )
+                        )
+
+        for play_id, play in self._playbook.resources_by_id.items():
+            self._ensure_ref(
+                issues,
+                play_id,
+                "personnel_id",
+                play,
+                self._personnel.resources_by_id,
+                "PLAYBOOK_PERSONNEL_REF_MISSING",
+            )
+            self._ensure_ref(
+                issues,
+                play_id,
+                "formation_id",
+                play,
+                self._formations.resources_by_id,
+                "PLAYBOOK_FORMATION_REF_MISSING",
+            )
+            self._ensure_ref(
+                issues,
+                play_id,
+                "offensive_concept_id",
+                play,
+                self._offense.resources_by_id,
+                "PLAYBOOK_OFFENSE_CONCEPT_REF_MISSING",
+            )
+            self._ensure_ref(
+                issues,
+                play_id,
+                "defensive_concept_id",
+                play,
+                self._defense.resources_by_id,
+                "PLAYBOOK_DEFENSE_CONCEPT_REF_MISSING",
+            )
+            self._ensure_ref(
+                issues,
+                play_id,
+                "assignment_template_id",
+                play,
+                self._assignment_templates.resources_by_id,
+                "PLAYBOOK_TEMPLATE_REF_MISSING",
+            )
+
+        for template_id, template in self._assignment_templates.resources_by_id.items():
+            offense_roles = template.get("offense_roles", [])
+            defense_roles = template.get("defense_roles", [])
+            if not isinstance(offense_roles, list) or not isinstance(defense_roles, list):
+                issues.append(
+                    ValidationIssue(
+                        code="INVALID_ASSIGNMENT_TEMPLATE_ROLES",
+                        severity="blocking",
+                        field_path=f"assignment_template.{template_id}",
+                        entity_id=template_id,
+                        message="offense_roles and defense_roles must be lists",
+                    )
                 )
-                self._check_policy_reference(
-                    issues,
-                    policy_id,
-                    posture,
-                    config,
-                    "formation_pass",
-                    self._formations.resources_by_id,
+                continue
+            if len(offense_roles) != 11 or len(defense_roles) != 11:
+                issues.append(
+                    ValidationIssue(
+                        code="ASSIGNMENT_TEMPLATE_ROLE_COUNT",
+                        severity="blocking",
+                        field_path=f"assignment_template.{template_id}",
+                        entity_id=template_id,
+                        message="assignment templates must define 11 offense and 11 defense roles",
+                    )
                 )
-                self._check_policy_reference(
-                    issues,
-                    policy_id,
-                    posture,
-                    config,
-                    "formation_run",
-                    self._formations.resources_by_id,
+
+        for mapping_id, row in self._trait_role_mapping.resources_by_id.items():
+            if not row.get("trait_code"):
+                issues.append(
+                    ValidationIssue(
+                        code="INVALID_TRAIT_ROLE_MAPPING",
+                        severity="blocking",
+                        field_path=f"trait_role_mapping.{mapping_id}",
+                        entity_id=mapping_id,
+                        message="trait_code is required",
+                    )
                 )
-                self._check_policy_reference(
-                    issues,
-                    policy_id,
-                    posture,
-                    config,
-                    "offense_pass",
-                    self._offense.resources_by_id,
+            try:
+                TraitStatus(str(row.get("status", TraitStatus.CORE_NOW.value)))
+            except ValueError:
+                issues.append(
+                    ValidationIssue(
+                        code="INVALID_TRAIT_ROLE_STATUS",
+                        severity="blocking",
+                        field_path=f"trait_role_mapping.{mapping_id}.status",
+                        entity_id=mapping_id,
+                        message="status must be core_now or reserved_phasal",
+                    )
                 )
-                self._check_policy_reference(
-                    issues,
-                    policy_id,
-                    posture,
-                    config,
-                    "offense_run",
-                    self._offense.resources_by_id,
+
+        if not self._rules_profiles.resources_by_id:
+            issues.append(
+                ValidationIssue(
+                    code="MISSING_RULES_PROFILES",
+                    severity="blocking",
+                    field_path="rules_profiles",
+                    entity_id="rules_profiles",
+                    message="at least one rules profile is required",
                 )
-                self._check_policy_reference(
-                    issues,
-                    policy_id,
-                    posture,
-                    config,
-                    "defense_base",
-                    self._defense.resources_by_id,
-                )
+            )
 
         if issues:
             raise ValidationError(issues)
 
-    def _check_policy_reference(
+    def _ensure_ref(
         self,
         issues: list[ValidationIssue],
-        policy_id: str,
-        posture: str,
-        config: dict[str, Any],
+        resource_id: str,
         field_name: str,
+        payload: dict[str, Any],
         allowed: dict[str, dict[str, Any]],
+        code: str,
     ) -> None:
-        if field_name not in config:
-            return
-        value = str(config[field_name])
-        if value not in allowed:
+        value = str(payload.get(field_name, ""))
+        if not value or value not in allowed:
             issues.append(
                 ValidationIssue(
-                    code="POLICY_REFERENCE_MISSING",
+                    code=code,
                     severity="blocking",
-                    field_path=f"policy.{policy_id}.defaults.{posture}.{field_name}",
-                    entity_id=policy_id,
+                    field_path=f"playbook.{resource_id}.{field_name}",
+                    entity_id=resource_id,
                     message=f"references unknown id '{value}'",
                 )
             )

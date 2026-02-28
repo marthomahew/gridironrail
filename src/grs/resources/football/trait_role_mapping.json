@@ -1,0 +1,704 @@
+{
+  "manifest": {
+    "resource_type": "trait_role_mapping",
+    "schema_version": "1.0",
+    "resource_version": "1.0.0",
+    "generated_at": "2026-02-28T00:00:00Z",
+    "checksum": "71e743fab82ca17b21570bb92722cbadc79ad629f803a40e75301b1fbc332d14"
+  },
+  "resources": [
+    {
+      "id": "map_001",
+      "trait_code": "strength",
+      "status": "core_now",
+      "phase": "early_leverage",
+      "contest_family": "leverage_duel",
+      "role_group": "all_field",
+      "evidence_tag": "trait:strength"
+    },
+    {
+      "id": "map_002",
+      "trait_code": "burst",
+      "status": "core_now",
+      "phase": "early_leverage",
+      "contest_family": "leverage_duel",
+      "role_group": "all_field",
+      "evidence_tag": "trait:burst"
+    },
+    {
+      "id": "map_003",
+      "trait_code": "top_speed",
+      "status": "core_now",
+      "phase": "early_leverage",
+      "contest_family": "leverage_duel",
+      "role_group": "all_field",
+      "evidence_tag": "trait:top_speed"
+    },
+    {
+      "id": "map_004",
+      "trait_code": "acceleration",
+      "status": "core_now",
+      "phase": "early_leverage",
+      "contest_family": "leverage_duel",
+      "role_group": "all_field",
+      "evidence_tag": "trait:acceleration"
+    },
+    {
+      "id": "map_005",
+      "trait_code": "agility",
+      "status": "core_now",
+      "phase": "early_leverage",
+      "contest_family": "leverage_duel",
+      "role_group": "all_field",
+      "evidence_tag": "trait:agility"
+    },
+    {
+      "id": "map_006",
+      "trait_code": "balance",
+      "status": "core_now",
+      "phase": "early_leverage",
+      "contest_family": "leverage_duel",
+      "role_group": "all_field",
+      "evidence_tag": "trait:balance"
+    },
+    {
+      "id": "map_007",
+      "trait_code": "stamina",
+      "status": "core_now",
+      "phase": "early_leverage",
+      "contest_family": "leverage_duel",
+      "role_group": "all_field",
+      "evidence_tag": "trait:stamina"
+    },
+    {
+      "id": "map_008",
+      "trait_code": "body_control",
+      "status": "core_now",
+      "phase": "branch_resolution",
+      "contest_family": "continuation",
+      "role_group": "all_field",
+      "evidence_tag": "trait:body_control"
+    },
+    {
+      "id": "map_009",
+      "trait_code": "leverage_control",
+      "status": "core_now",
+      "phase": "branch_resolution",
+      "contest_family": "continuation",
+      "role_group": "all_field",
+      "evidence_tag": "trait:leverage_control"
+    },
+    {
+      "id": "map_010",
+      "trait_code": "momentum_management",
+      "status": "core_now",
+      "phase": "branch_resolution",
+      "contest_family": "continuation",
+      "role_group": "all_field",
+      "evidence_tag": "trait:momentum_management"
+    },
+    {
+      "id": "map_011",
+      "trait_code": "pursuit_angles",
+      "status": "core_now",
+      "phase": "branch_resolution",
+      "contest_family": "continuation",
+      "role_group": "all_field",
+      "evidence_tag": "trait:pursuit_angles"
+    },
+    {
+      "id": "map_012",
+      "trait_code": "awareness",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "all_field",
+      "evidence_tag": "trait:awareness"
+    },
+    {
+      "id": "map_013",
+      "trait_code": "processing_speed",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "all_field",
+      "evidence_tag": "trait:processing_speed"
+    },
+    {
+      "id": "map_014",
+      "trait_code": "recognition",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "all_field",
+      "evidence_tag": "trait:recognition"
+    },
+    {
+      "id": "map_015",
+      "trait_code": "anticipation",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "all_field",
+      "evidence_tag": "trait:anticipation"
+    },
+    {
+      "id": "map_016",
+      "trait_code": "discipline",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "all_field",
+      "evidence_tag": "trait:discipline"
+    },
+    {
+      "id": "map_017",
+      "trait_code": "decision_quality",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "all_field",
+      "evidence_tag": "trait:decision_quality"
+    },
+    {
+      "id": "map_018",
+      "trait_code": "communication",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "all_field",
+      "evidence_tag": "trait:communication"
+    },
+    {
+      "id": "map_019",
+      "trait_code": "communication_secondary",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "all_field",
+      "evidence_tag": "trait:communication_secondary"
+    },
+    {
+      "id": "map_020",
+      "trait_code": "composure",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "all_field",
+      "evidence_tag": "trait:composure"
+    },
+    {
+      "id": "map_021",
+      "trait_code": "short_accuracy",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:short_accuracy"
+    },
+    {
+      "id": "map_022",
+      "trait_code": "intermediate_accuracy",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:intermediate_accuracy"
+    },
+    {
+      "id": "map_023",
+      "trait_code": "deep_accuracy",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:deep_accuracy"
+    },
+    {
+      "id": "map_024",
+      "trait_code": "throw_power",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:throw_power"
+    },
+    {
+      "id": "map_025",
+      "trait_code": "throw_touch",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:throw_touch"
+    },
+    {
+      "id": "map_026",
+      "trait_code": "release_quickness",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:release_quickness"
+    },
+    {
+      "id": "map_027",
+      "trait_code": "pocket_sense",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:pocket_sense"
+    },
+    {
+      "id": "map_028",
+      "trait_code": "timing_precision",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:timing_precision"
+    },
+    {
+      "id": "map_029",
+      "trait_code": "play_action_craft",
+      "status": "reserved_phasal",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:play_action_craft"
+    },
+    {
+      "id": "map_030",
+      "trait_code": "blitz_identification",
+      "status": "core_now",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:blitz_identification"
+    },
+    {
+      "id": "map_031",
+      "trait_code": "cadence_control",
+      "status": "reserved_phasal",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:cadence_control"
+    },
+    {
+      "id": "map_032",
+      "trait_code": "snap_operation",
+      "status": "reserved_phasal",
+      "phase": "disposition",
+      "contest_family": "decision_risk",
+      "role_group": "qb_room",
+      "evidence_tag": "trait:snap_operation"
+    },
+    {
+      "id": "map_033",
+      "trait_code": "hands",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "catch_point_contest",
+      "role_group": "skill_positions",
+      "evidence_tag": "trait:hands"
+    },
+    {
+      "id": "map_034",
+      "trait_code": "catch_radius",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "catch_point_contest",
+      "role_group": "skill_positions",
+      "evidence_tag": "trait:catch_radius"
+    },
+    {
+      "id": "map_035",
+      "trait_code": "contested_catch",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "catch_point_contest",
+      "role_group": "skill_positions",
+      "evidence_tag": "trait:contested_catch"
+    },
+    {
+      "id": "map_036",
+      "trait_code": "ball_tracking",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "catch_point_contest",
+      "role_group": "skill_positions",
+      "evidence_tag": "trait:ball_tracking"
+    },
+    {
+      "id": "map_037",
+      "trait_code": "route_fidelity",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "catch_point_contest",
+      "role_group": "skill_positions",
+      "evidence_tag": "trait:route_fidelity"
+    },
+    {
+      "id": "map_038",
+      "trait_code": "release_quality",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "catch_point_contest",
+      "role_group": "skill_positions",
+      "evidence_tag": "trait:release_quality"
+    },
+    {
+      "id": "map_039",
+      "trait_code": "yac_vision",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "catch_point_contest",
+      "role_group": "skill_positions",
+      "evidence_tag": "trait:yac_vision"
+    },
+    {
+      "id": "map_040",
+      "trait_code": "ball_security",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "catch_point_contest",
+      "role_group": "skill_positions",
+      "evidence_tag": "trait:ball_security"
+    },
+    {
+      "id": "map_041",
+      "trait_code": "pass_set",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "pressure_emergence",
+      "role_group": "offensive_front",
+      "evidence_tag": "trait:pass_set"
+    },
+    {
+      "id": "map_042",
+      "trait_code": "hand_placement",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "pressure_emergence",
+      "role_group": "offensive_front",
+      "evidence_tag": "trait:hand_placement"
+    },
+    {
+      "id": "map_043",
+      "trait_code": "mirror_skill",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "pressure_emergence",
+      "role_group": "offensive_front",
+      "evidence_tag": "trait:mirror_skill"
+    },
+    {
+      "id": "map_044",
+      "trait_code": "anchor",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "pressure_emergence",
+      "role_group": "offensive_front",
+      "evidence_tag": "trait:anchor"
+    },
+    {
+      "id": "map_045",
+      "trait_code": "recovery_blocking",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "pressure_emergence",
+      "role_group": "offensive_front",
+      "evidence_tag": "trait:recovery_blocking"
+    },
+    {
+      "id": "map_046",
+      "trait_code": "run_block_drive",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "pressure_emergence",
+      "role_group": "offensive_front",
+      "evidence_tag": "trait:run_block_drive"
+    },
+    {
+      "id": "map_047",
+      "trait_code": "run_block_positioning",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "pressure_emergence",
+      "role_group": "offensive_front",
+      "evidence_tag": "trait:run_block_positioning"
+    },
+    {
+      "id": "map_048",
+      "trait_code": "combo_coordination",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "pressure_emergence",
+      "role_group": "offensive_front",
+      "evidence_tag": "trait:combo_coordination"
+    },
+    {
+      "id": "map_049",
+      "trait_code": "man_footwork",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "separation_window",
+      "role_group": "coverage_shell",
+      "evidence_tag": "trait:man_footwork"
+    },
+    {
+      "id": "map_050",
+      "trait_code": "route_match_skill",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "separation_window",
+      "role_group": "coverage_shell",
+      "evidence_tag": "trait:route_match_skill"
+    },
+    {
+      "id": "map_051",
+      "trait_code": "leverage_management",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "separation_window",
+      "role_group": "coverage_shell",
+      "evidence_tag": "trait:leverage_management"
+    },
+    {
+      "id": "map_052",
+      "trait_code": "transition_speed",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "separation_window",
+      "role_group": "coverage_shell",
+      "evidence_tag": "trait:transition_speed"
+    },
+    {
+      "id": "map_053",
+      "trait_code": "ball_skills_defense",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "separation_window",
+      "role_group": "coverage_shell",
+      "evidence_tag": "trait:ball_skills_defense"
+    },
+    {
+      "id": "map_054",
+      "trait_code": "press_technique",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "separation_window",
+      "role_group": "coverage_shell",
+      "evidence_tag": "trait:press_technique"
+    },
+    {
+      "id": "map_055",
+      "trait_code": "jam_strength",
+      "status": "reserved_phasal",
+      "phase": "primary_contest",
+      "contest_family": "separation_window",
+      "role_group": "coverage_shell",
+      "evidence_tag": "trait:jam_strength"
+    },
+    {
+      "id": "map_056",
+      "trait_code": "recovery_speed",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "separation_window",
+      "role_group": "coverage_shell",
+      "evidence_tag": "trait:recovery_speed"
+    },
+    {
+      "id": "map_057",
+      "trait_code": "dpi_risk_control",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "separation_window",
+      "role_group": "coverage_shell",
+      "evidence_tag": "trait:dpi_risk_control"
+    },
+    {
+      "id": "map_058",
+      "trait_code": "kick_power",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "kick_quality",
+      "role_group": "specialists",
+      "evidence_tag": "trait:kick_power"
+    },
+    {
+      "id": "map_059",
+      "trait_code": "kick_accuracy",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "kick_quality",
+      "role_group": "specialists",
+      "evidence_tag": "trait:kick_accuracy"
+    },
+    {
+      "id": "map_060",
+      "trait_code": "hang_time_control",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "kick_quality",
+      "role_group": "specialists",
+      "evidence_tag": "trait:hang_time_control"
+    },
+    {
+      "id": "map_061",
+      "trait_code": "soft_tissue_risk",
+      "status": "core_now",
+      "phase": "aftermath",
+      "contest_family": "injury_risk",
+      "role_group": "availability_model",
+      "evidence_tag": "trait:soft_tissue_risk"
+    },
+    {
+      "id": "map_062",
+      "trait_code": "contact_injury_risk",
+      "status": "core_now",
+      "phase": "aftermath",
+      "contest_family": "injury_risk",
+      "role_group": "availability_model",
+      "evidence_tag": "trait:contact_injury_risk"
+    },
+    {
+      "id": "map_063",
+      "trait_code": "re_injury_risk",
+      "status": "core_now",
+      "phase": "aftermath",
+      "contest_family": "injury_risk",
+      "role_group": "availability_model",
+      "evidence_tag": "trait:re_injury_risk"
+    },
+    {
+      "id": "map_064",
+      "trait_code": "durability",
+      "status": "core_now",
+      "phase": "aftermath",
+      "contest_family": "injury_risk",
+      "role_group": "availability_model",
+      "evidence_tag": "trait:durability"
+    },
+    {
+      "id": "map_065",
+      "trait_code": "pain_tolerance",
+      "status": "core_now",
+      "phase": "aftermath",
+      "contest_family": "injury_risk",
+      "role_group": "availability_model",
+      "evidence_tag": "trait:pain_tolerance"
+    },
+    {
+      "id": "map_066",
+      "trait_code": "recovery_rate",
+      "status": "core_now",
+      "phase": "aftermath",
+      "contest_family": "injury_risk",
+      "role_group": "availability_model",
+      "evidence_tag": "trait:recovery_rate"
+    },
+    {
+      "id": "map_067",
+      "trait_code": "volatility_profile",
+      "status": "reserved_phasal",
+      "phase": "aftermath",
+      "contest_family": "injury_risk",
+      "role_group": "availability_model",
+      "evidence_tag": "trait:volatility_profile"
+    },
+    {
+      "id": "map_068",
+      "trait_code": "get_off",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "fit_integrity",
+      "role_group": "front_seven",
+      "evidence_tag": "trait:get_off"
+    },
+    {
+      "id": "map_069",
+      "trait_code": "hand_fighting",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "fit_integrity",
+      "role_group": "front_seven",
+      "evidence_tag": "trait:hand_fighting"
+    },
+    {
+      "id": "map_070",
+      "trait_code": "rush_plan_diversity",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "fit_integrity",
+      "role_group": "front_seven",
+      "evidence_tag": "trait:rush_plan_diversity"
+    },
+    {
+      "id": "map_071",
+      "trait_code": "edge_contain",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "fit_integrity",
+      "role_group": "front_seven",
+      "evidence_tag": "trait:edge_contain"
+    },
+    {
+      "id": "map_072",
+      "trait_code": "block_shed",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "fit_integrity",
+      "role_group": "front_seven",
+      "evidence_tag": "trait:block_shed"
+    },
+    {
+      "id": "map_073",
+      "trait_code": "gap_integrity",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "fit_integrity",
+      "role_group": "front_seven",
+      "evidence_tag": "trait:gap_integrity"
+    },
+    {
+      "id": "map_074",
+      "trait_code": "stack_shed",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "fit_integrity",
+      "role_group": "front_seven",
+      "evidence_tag": "trait:stack_shed"
+    },
+    {
+      "id": "map_075",
+      "trait_code": "closing_speed",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "fit_integrity",
+      "role_group": "front_seven",
+      "evidence_tag": "trait:closing_speed"
+    },
+    {
+      "id": "map_076",
+      "trait_code": "tackle_power",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "fit_integrity",
+      "role_group": "front_seven",
+      "evidence_tag": "trait:tackle_power"
+    },
+    {
+      "id": "map_077",
+      "trait_code": "tackle_form",
+      "status": "core_now",
+      "phase": "primary_contest",
+      "contest_family": "fit_integrity",
+      "role_group": "front_seven",
+      "evidence_tag": "trait:tackle_form"
+    }
+  ]
+}

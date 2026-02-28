@@ -45,6 +45,11 @@ class ActionType(str, Enum):
     SET_PLAYCALL = "set_playcall"
 
 
+class TraitStatus(str, Enum):
+    CORE_NOW = "core_now"
+    RESERVED_PHASAL = "reserved_phasal"
+
+
 class RandomSource(Protocol):
     def rand(self) -> float: ...
 
@@ -92,6 +97,9 @@ class ParameterizedIntent:
     formation: str
     offensive_concept: str
     defensive_concept: str
+    playbook_entry_id: str | None = None
+    assignment_template_id: str | None = None
+    rules_profile_id: str = "nfl_placeholder_v1"
     tempo: str = "normal"
     aggression: str = "balanced"
     allows_audible: bool = True
@@ -105,6 +113,7 @@ class PlaycallRequest:
     formation: str
     offensive_concept: str
     defensive_concept: str
+    playbook_entry_id: str | None = None
     tempo: str = "normal"
     aggression: str = "balanced"
     play_type: PlayType = PlayType.PASS
@@ -390,6 +399,7 @@ class TraitCatalogEntry:
     required: bool
     description: str
     category: str
+    status: TraitStatus
     version: str
 
 
@@ -484,6 +494,159 @@ class ResolverEvidenceRef:
 
 
 @dataclass(slots=True)
+class PlaybookEntry:
+    play_id: str
+    play_type: PlayType
+    family: str
+    personnel_id: str
+    formation_id: str
+    offensive_concept_id: str
+    defensive_concept_id: str
+    assignment_template_id: str
+    branch_trigger_ids: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class AssignmentTemplate:
+    template_id: str
+    offense_roles: list[str]
+    defense_roles: list[str]
+    pairing_hints: list[dict[str, str]] = field(default_factory=list)
+    default_technique: str = "balanced"
+
+
+@dataclass(slots=True)
+class TraitRoleMappingEntry:
+    trait_code: str
+    status: TraitStatus
+    phase: str
+    contest_family: str
+    role_group: str
+    evidence_tag: str
+
+
+@dataclass(slots=True)
+class MatchupEdge:
+    edge_id: str
+    offense_actor_id: str
+    defense_actor_id: str
+    offense_role: str
+    defense_role: str
+    technique: str
+    leverage: str
+    responsibility_weight: float
+    context_tags: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class MatchupGraph:
+    graph_id: str
+    play_id: str
+    phase: str
+    edges: list[MatchupEdge]
+
+
+@dataclass(slots=True)
+class PreSnapMatchupPlan:
+    plan_id: str
+    play_id: str
+    playbook_entry_id: str
+    assignment_template_id: str
+    offense_team_id: str
+    defense_team_id: str
+    graph: MatchupGraph
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class LeverageState:
+    edge_wins_offense: float
+    edge_wins_defense: float
+    contested_edges: int
+
+
+@dataclass(slots=True)
+class PocketState:
+    integrity: float
+    pressure_score: float
+    qb_constraint: str
+
+
+@dataclass(slots=True)
+class SeparationState:
+    window_score: float
+    leverage_label: str
+    busted_coverage: bool
+
+
+@dataclass(slots=True)
+class RunFitState:
+    lane_score: float
+    fit_label: str
+    pursuit_eta: float
+
+
+@dataclass(slots=True)
+class PursuitState:
+    convergence_score: float
+    tackle_depth_estimate: float
+
+
+@dataclass(slots=True)
+class ContestResolution:
+    contest_id: str
+    play_id: str
+    phase: str
+    family: str
+    score: float
+    offense_score: float
+    defense_score: float
+    contributor_trace: dict[str, float]
+    trait_trace: dict[str, float]
+    evidence_handles: list[str]
+    variance_hint: float
+
+
+@dataclass(slots=True)
+class RulesAdjudicationResult:
+    penalties: list[PenaltyArtifact]
+    score_event: str | None
+    enforcement_notes: list[str]
+    next_down: int
+    next_distance: int
+    next_possession_team_id: str
+    clock_delta: int
+
+
+@dataclass(slots=True)
+class ResolvedSnapStateDelta:
+    next_down: int
+    next_distance: int
+    next_possession_team_id: str
+    new_spot: int
+    clock_delta: int
+    score_delta_by_team: dict[str, int] = field(default_factory=dict)
+    drive_increment: bool = False
+    injuries: dict[str, str] = field(default_factory=dict)
+    fatigue_delta: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class SnapArtifactBundle:
+    play_result: PlayResult
+    pre_snap_plan: PreSnapMatchupPlan
+    matchup_snapshots: list[MatchupGraph]
+    phase_transitions: list[str]
+    contest_resolutions: list[ContestResolution]
+    rep_ledger: list[RepLedgerEntry]
+    causality_chain: CausalityChain
+    evidence_refs: list[ResolverEvidenceRef]
+    rules_adjudication: RulesAdjudicationResult
+    narrative_events: list[NarrativeEvent] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class SimulationReadinessReport:
     season: int
     week: int
@@ -506,3 +669,56 @@ class ForensicArtifact:
     context: Mapping[str, Any]
     identifiers: Mapping[str, str]
     causal_fragment: Sequence[str]
+
+
+@dataclass(slots=True)
+class PlayIntentFrame:
+    play_type: PlayType
+    personnel_id: str
+    formation_id: str
+    offense_concept_id: str
+    defense_concept_id: str
+    playbook_entry_id: str
+    posture: str
+    tempo: str = "normal"
+    aggression: str = "balanced"
+    allows_audible: bool = True
+
+
+@dataclass(slots=True)
+class TeamGamePackage:
+    team_id: str
+    active_players: list[str]
+    depth_slots: dict[str, str]
+    perceived_inputs: dict[str, float]
+    coaching_policy_id: str
+    default_rules_profile_id: str = "nfl_placeholder_v1"
+
+
+class RegistryRepository(Protocol):
+    def resolve_personnel(self, personnel_id: str) -> dict[str, Any]: ...
+
+    def resolve_formation(self, formation_id: str) -> dict[str, Any]: ...
+
+    def resolve_concept(self, concept_id: str, side: str) -> dict[str, Any]: ...
+
+    def resolve_policy(self, policy_id: str) -> dict[str, Any]: ...
+
+    def resolve_playbook_entry(self, play_id: str) -> PlaybookEntry: ...
+
+    def resolve_assignment_template(self, template_id: str) -> AssignmentTemplate: ...
+
+    def resolve_trait_role_mappings(self) -> list[TraitRoleMappingEntry]: ...
+
+    def resolve_rules_profile(self, rules_profile_id: str) -> dict[str, Any]: ...
+
+
+class CoachDecisionEngine(Protocol):
+    def decide_play_intent(
+        self,
+        *,
+        session_state: GameSessionState,
+        offense_package: TeamGamePackage,
+        defense_package: TeamGamePackage,
+        random_source: RandomSource,
+    ) -> PlayIntentFrame: ...

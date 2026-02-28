@@ -122,7 +122,7 @@ def _mean_yards(
     defense_trait_overrides: dict[str, float] | None = None,
     sample_count: int = 80,
 ) -> tuple[float, list[str]]:
-    resolver = FootballResolver(random_source=seeded_random(900), trait_weighted_enabled=True)
+    resolver = FootballResolver(random_source=seeded_random(900))
     total_yards = 0
     terminals: list[str] = []
     for idx in range(sample_count):
@@ -145,7 +145,7 @@ def _score_event_count(
     sample_count: int = 80,
     expected_score_event: str,
 ) -> int:
-    resolver = FootballResolver(random_source=seeded_random(901), trait_weighted_enabled=True)
+    resolver = FootballResolver(random_source=seeded_random(901))
     hits = 0
     for idx in range(sample_count):
         scp = _build_context(
@@ -160,7 +160,7 @@ def _score_event_count(
 
 
 def _turnover_rate(play_type: PlayType, offense_trait_overrides: dict[str, float], sample_count: int = 80) -> float:
-    resolver = FootballResolver(random_source=seeded_random(902), trait_weighted_enabled=True)
+    resolver = FootballResolver(random_source=seeded_random(902))
     turnovers = 0
     for idx in range(sample_count):
         scp = _build_context(
@@ -247,7 +247,7 @@ def test_trait_sensitivity_special_teams_field_goal_make_rate():
 
 
 def test_special_teams_and_two_point_use_contest_based_resolution():
-    resolver = FootballResolver(random_source=seeded_random(903), trait_weighted_enabled=True)
+    resolver = FootballResolver(random_source=seeded_random(903))
     for play_type in [
         PlayType.PUNT,
         PlayType.KICKOFF,
@@ -268,7 +268,7 @@ def test_special_teams_and_two_point_use_contest_based_resolution():
 
 
 def test_causality_chains_for_non_turnover_events_remain_accountable():
-    resolver = FootballResolver(random_source=seeded_random(904), trait_weighted_enabled=True)
+    resolver = FootballResolver(random_source=seeded_random(904))
     observed_non_turnover = 0
     for play_type in [PlayType.RUN, PlayType.PASS, PlayType.PUNT, PlayType.KICKOFF, PlayType.FIELD_GOAL, PlayType.EXTRA_POINT]:
         for idx in range(20):

@@ -7,12 +7,57 @@
     "checksum": "cd71ec8fe706b4f1e76b058721f774a42b5122b4d54565fe15576c6220510dcc"
   },
   "resources": [
-    {"id": "cover3_match", "play_types": ["pass", "run", "two_point"], "phase": "defense"},
-    {"id": "cover2", "play_types": ["pass"], "phase": "defense"},
-    {"id": "quarters", "play_types": ["pass"], "phase": "defense"},
-    {"id": "base_over", "play_types": ["run"], "phase": "defense"},
-    {"id": "punt_return_safe", "play_types": ["punt"], "phase": "special"},
-    {"id": "field_goal_block", "play_types": ["field_goal", "extra_point"], "phase": "special"},
-    {"id": "kickoff_return", "play_types": ["kickoff"], "phase": "special"}
+    {
+      "id": "cover3_match",
+      "play_types": [
+        "pass",
+        "run",
+        "two_point"
+      ],
+      "phase": "defense"
+    },
+    {
+      "id": "cover2",
+      "play_types": [
+        "pass"
+      ],
+      "phase": "defense"
+    },
+    {
+      "id": "quarters",
+      "play_types": [
+        "pass"
+      ],
+      "phase": "defense"
+    },
+    {
+      "id": "base_over",
+      "play_types": [
+        "run"
+      ],
+      "phase": "defense"
+    },
+    {
+      "id": "punt_return_safe",
+      "play_types": [
+        "punt"
+      ],
+      "phase": "special"
+    },
+    {
+      "id": "field_goal_block",
+      "play_types": [
+        "field_goal",
+        "extra_point"
+      ],
+      "phase": "special"
+    },
+    {
+      "id": "kickoff_return",
+      "play_types": [
+        "kickoff"
+      ],
+      "phase": "special"
+    }
   ]
 }

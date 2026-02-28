@@ -116,8 +116,8 @@ class AuthoritativeStore:
             conn.executemany(
                 """
                 INSERT OR REPLACE INTO trait_catalog(
-                    trait_code, dtype, min_value, max_value, required, description, category, version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    trait_code, dtype, min_value, max_value, required, description, category, status, version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -128,6 +128,7 @@ class AuthoritativeStore:
                         int(entry.required),
                         entry.description,
                         entry.category,
+                        entry.status.value,
                         entry.version,
                     )
                     for entry in catalog
@@ -222,6 +223,11 @@ class AuthoritativeStore:
         with self.connect() as conn:
             self._insert_play_result(conn, game_id, resolution.play_result, resolution.conditioned, resolution.attempts)
             self._insert_causality(conn, resolution.causality_chain)
+            self._insert_matchup_snapshots(conn, resolution)
+            self._insert_phase_transitions(conn, resolution)
+            self._insert_contest_resolutions(conn, resolution)
+            self._insert_rules_adjudication(conn, resolution)
+            self._insert_evidence_refs(conn, resolution)
             if retained:
                 self._insert_rep_ledger(conn, resolution.rep_ledger)
             self._save_narrative_events_conn(conn, resolution.narrative_events)
@@ -333,6 +339,10 @@ class AuthoritativeStore:
                 "SELECT play_id, terminal_event, source_id, weight, description FROM causality_nodes WHERE play_id IN (SELECT play_id FROM play_results WHERE game_id = ?) ORDER BY node_id",
                 (game_id,),
             ).fetchall()
+            contests = conn.execute(
+                "SELECT contest_id, play_id, phase, family, score FROM contest_resolutions WHERE play_id IN (SELECT play_id FROM play_results WHERE game_id = ?) ORDER BY contest_id",
+                (game_id,),
+            ).fetchall()
         return {
             "plays": [
                 {"play_id": p[0], "yards": p[1], "score_event": p[2], "turnover_type": p[3]}
@@ -351,6 +361,10 @@ class AuthoritativeStore:
             "causality": [
                 {"play_id": c[0], "terminal_event": c[1], "source_id": c[2], "weight": c[3], "description": c[4]}
                 for c in causality
+            ],
+            "contests": [
+                {"contest_id": c[0], "play_id": c[1], "phase": c[2], "family": c[3], "score": c[4]}
+                for c in contests
             ],
         }
 
@@ -638,5 +652,89 @@ class AuthoritativeStore:
                     node.source_id,
                     node.weight,
                     node.description,
+                ),
+            )
+
+    def _insert_matchup_snapshots(self, conn: sqlite3.Connection, resolution: SnapResolution) -> None:
+        for snapshot in resolution.artifact_bundle.matchup_snapshots:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO matchup_snapshots(snapshot_id, play_id, phase, graph_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    snapshot.graph_id,
+                    resolution.play_result.play_id,
+                    snapshot.phase,
+                    json.dumps(asdict(snapshot)),
+                ),
+            )
+
+    def _insert_phase_transitions(self, conn: sqlite3.Connection, resolution: SnapResolution) -> None:
+        for phase in resolution.artifact_bundle.phase_transitions:
+            conn.execute(
+                """
+                INSERT INTO phase_transitions(play_id, phase)
+                VALUES (?, ?)
+                """,
+                (resolution.play_result.play_id, phase),
+            )
+
+    def _insert_contest_resolutions(self, conn: sqlite3.Connection, resolution: SnapResolution) -> None:
+        for contest in resolution.artifact_bundle.contest_resolutions:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO contest_resolutions(
+                    contest_id, play_id, phase, family, score, offense_score, defense_score,
+                    contributor_json, trait_json, evidence_json, variance_hint
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    contest.contest_id,
+                    resolution.play_result.play_id,
+                    contest.phase,
+                    contest.family,
+                    contest.score,
+                    contest.offense_score,
+                    contest.defense_score,
+                    json.dumps(contest.contributor_trace),
+                    json.dumps(contest.trait_trace),
+                    json.dumps(contest.evidence_handles),
+                    contest.variance_hint,
+                ),
+            )
+
+    def _insert_rules_adjudication(self, conn: sqlite3.Connection, resolution: SnapResolution) -> None:
+        rules = resolution.artifact_bundle.rules_adjudication
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO rules_adjudications(
+                play_id, score_event, notes_json, next_down, next_distance, next_possession_team_id, clock_delta
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                resolution.play_result.play_id,
+                rules.score_event,
+                json.dumps(rules.enforcement_notes),
+                rules.next_down,
+                rules.next_distance,
+                rules.next_possession_team_id,
+                rules.clock_delta,
+            ),
+        )
+
+    def _insert_evidence_refs(self, conn: sqlite3.Connection, resolution: SnapResolution) -> None:
+        for ref in resolution.evidence_refs:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO evidence_refs(handle, play_id, source_type, source_id, metadata_json)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    ref.handle,
+                    resolution.play_result.play_id,
+                    ref.source_type,
+                    ref.source_id,
+                    json.dumps(ref.metadata),
                 ),
             )

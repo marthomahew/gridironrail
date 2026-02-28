@@ -4,25 +4,47 @@ from dataclasses import dataclass, field
 
 from grs.contracts import (
     CausalityChain,
-    ContestOutput,
+    ContestResolution,
     GameSessionState,
     NarrativeEvent,
     PlayResult,
     RepLedgerEntry,
+    ResolvedSnapStateDelta,
     ResolverEvidenceRef,
+    SnapArtifactBundle,
 )
 
 
 @dataclass(slots=True)
 class SnapResolution:
-    play_result: PlayResult
-    rep_ledger: list[RepLedgerEntry]
-    causality_chain: CausalityChain
-    contest_outputs: list[ContestOutput] = field(default_factory=list)
-    evidence_refs: list[ResolverEvidenceRef] = field(default_factory=list)
-    narrative_events: list[NarrativeEvent] = field(default_factory=list)
+    artifact_bundle: SnapArtifactBundle
+    state_delta: ResolvedSnapStateDelta
     conditioned: bool = False
     attempts: int = 1
+
+    @property
+    def play_result(self) -> PlayResult:
+        return self.artifact_bundle.play_result
+
+    @property
+    def rep_ledger(self) -> list[RepLedgerEntry]:
+        return self.artifact_bundle.rep_ledger
+
+    @property
+    def causality_chain(self) -> CausalityChain:
+        return self.artifact_bundle.causality_chain
+
+    @property
+    def contest_outputs(self) -> list[ContestResolution]:
+        return self.artifact_bundle.contest_resolutions
+
+    @property
+    def evidence_refs(self) -> list[ResolverEvidenceRef]:
+        return self.artifact_bundle.evidence_refs
+
+    @property
+    def narrative_events(self) -> list[NarrativeEvent]:
+        return self.artifact_bundle.narrative_events
 
 
 @dataclass(slots=True)

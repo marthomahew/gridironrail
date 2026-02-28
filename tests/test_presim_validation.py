@@ -10,6 +10,7 @@ import pytest
 from grs.contracts import ActionRequest, ActionType, ValidationError
 from grs.core import make_id
 from grs.football import PreSimValidator, ResourceResolver
+from grs.football.traits import required_trait_codes
 from grs.simulation import DynastyRuntime
 
 
@@ -150,13 +151,14 @@ def test_trait_influence_profile_rejects_unknown_trait_code():
     assert any(issue.code == "UNKNOWN_INFLUENCE_TRAIT" for issue in ex.value.issues)
 
 
-def test_active_players_have_complete_90_trait_vectors(tmp_path: Path):
+def test_active_players_have_complete_required_trait_vectors(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=106)
     team = next(t for t in runtime.org_state.teams if t.team_id == "T01")
     active_ids = {d.player_id for d in team.depth_chart if d.active_flag}
     active_players = [p for p in team.roster if p.player_id in active_ids]
     assert active_players
-    assert all(len(p.traits) == 90 for p in active_players)
+    required_count = len(required_trait_codes())
+    assert all(len(p.traits) == required_count for p in active_players)
 
 
 def test_batch_hard_fails_if_any_scheduled_game_invalid(tmp_path: Path):

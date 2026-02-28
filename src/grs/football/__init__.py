@@ -1,4 +1,5 @@
 from .contest import ContestEvaluator, parse_influence_profiles, required_influence_families
+from .coaching import PolicyDrivenCoachDecisionEngine, intent_to_playcall
 from .models import GameSessionResult, SnapResolution
 from .resources import ResourceResolver
 from .resolver import FootballEngine, FootballResolver
@@ -16,4 +17,6 @@ __all__ = [
     "required_influence_families",
     "PreSimValidator",
     "ResourceResolver",
+    "PolicyDrivenCoachDecisionEngine",
+    "intent_to_playcall",
 ]

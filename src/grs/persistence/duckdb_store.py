@@ -199,16 +199,16 @@ class AnalyticsStore:
             [(k[0], k[1], k[2], v[0], v[1], v[2], v[3], v[4]) for k, v in agg.items()],
         )
 
-        # Pressure / coverage / run-fit rep counts by game.
+        # Pressure / coverage / run-fit contest counts by game.
         dconn.execute(f"DELETE FROM mart_pressure_coverage WHERE game_id IN ({placeholders})", game_ids)
         rep_rows = sconn.execute(
             f"""
             SELECT p.game_id,
-                   SUM(CASE WHEN r.rep_type IN ('pass_pro', 'pressure') THEN 1 ELSE 0 END) AS pressure_reps,
-                   SUM(CASE WHEN r.rep_type IN ('coverage', 'contest') THEN 1 ELSE 0 END) AS coverage_reps,
-                   SUM(CASE WHEN r.rep_type IN ('run_fit', 'tackle') THEN 1 ELSE 0 END) AS run_fit_reps
-            FROM rep_ledger r
-            JOIN play_results p ON p.play_id = r.play_id
+                   SUM(CASE WHEN c.family IN ('pressure_emergence', 'block_pressure') THEN 1 ELSE 0 END) AS pressure_reps,
+                   SUM(CASE WHEN c.family IN ('separation_window', 'catch_point_contest', 'coverage_lane_integrity') THEN 1 ELSE 0 END) AS coverage_reps,
+                   SUM(CASE WHEN c.family IN ('lane_creation', 'fit_integrity', 'tackle_finish') THEN 1 ELSE 0 END) AS run_fit_reps
+            FROM contest_resolutions c
+            JOIN play_results p ON p.play_id = c.play_id
             WHERE p.game_id IN ({placeholders})
             GROUP BY p.game_id
             """,
@@ -233,18 +233,30 @@ class AnalyticsStore:
         if ca_rows:
             dconn.executemany("INSERT INTO mart_turnover_causality VALUES (?, ?, ?, ?, ?)", ca_rows)
 
-        # Shared responsibility rollup.
+        # Shared responsibility rollup from contest contributors.
         dconn.execute(f"DELETE FROM mart_shared_responsibility WHERE game_id IN ({placeholders})", game_ids)
         sr_rows = sconn.execute(
             f"""
-            SELECT p.game_id, a.actor_id, COUNT(*) AS rep_count, SUM(a.responsibility_weight) AS total_weight
-            FROM rep_actors a
-            JOIN rep_ledger r ON r.rep_id = a.rep_id
-            JOIN play_results p ON p.play_id = r.play_id
+            SELECT p.game_id, c.contributor_json
+            FROM contest_resolutions c
+            JOIN play_results p ON p.play_id = c.play_id
             WHERE p.game_id IN ({placeholders})
-            GROUP BY p.game_id, a.actor_id
             """,
             tuple(game_ids),
         ).fetchall()
         if sr_rows:
-            dconn.executemany("INSERT INTO mart_shared_responsibility VALUES (?, ?, ?, ?)", sr_rows)
+            import json
+
+            agg_sr: dict[tuple[str, str], list[float]] = {}
+            for game_id, contributor_json in sr_rows:
+                data = json.loads(contributor_json)
+                for actor_id, weight in data.items():
+                    sr_key = (str(game_id), str(actor_id))
+                    if sr_key not in agg_sr:
+                        agg_sr[sr_key] = [0.0, 0.0]
+                    agg_sr[sr_key][0] += 1.0
+                    agg_sr[sr_key][1] += abs(float(weight))
+            dconn.executemany(
+                "INSERT INTO mart_shared_responsibility VALUES (?, ?, ?, ?)",
+                [(game_id, actor_id, int(vals[0]), float(vals[1])) for (game_id, actor_id), vals in agg_sr.items()],
+            )

@@ -36,6 +36,7 @@ class PreSimValidator:
         self._trait_catalog = list(trait_catalog or canonical_trait_catalog())
         self._required_traits = {t.trait_code for t in self._trait_catalog if t.required}
         self._validate_trait_influence_resources()
+        self._validate_trait_role_mapping_coverage()
 
     def validate_game_input(
         self,
@@ -214,6 +215,41 @@ class PreSimValidator:
 
     def _validate_playcall_fields(self, playcall: PlaycallRequest) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
+        if playcall.playbook_entry_id:
+            try:
+                entry = self._resource_resolver.resolve_playbook_entry(playcall.playbook_entry_id)
+                if entry.play_type != playcall.play_type:
+                    issues.append(
+                        ValidationIssue(
+                            code="PLAYBOOK_PLAYTYPE_MISMATCH",
+                            severity="blocking",
+                            field_path="playcall.playbook_entry_id",
+                            entity_id=playcall.team_id,
+                            message=f"playbook '{playcall.playbook_entry_id}' play_type does not match requested '{playcall.play_type.value}'",
+                        )
+                    )
+                if entry.personnel_id != playcall.personnel:
+                    issues.append(
+                        ValidationIssue(
+                            code="PLAYBOOK_PERSONNEL_MISMATCH",
+                            severity="blocking",
+                            field_path="playcall.personnel",
+                            entity_id=playcall.team_id,
+                            message=f"playbook '{playcall.playbook_entry_id}' personnel mismatch",
+                        )
+                    )
+                if entry.formation_id != playcall.formation:
+                    issues.append(
+                        ValidationIssue(
+                            code="PLAYBOOK_FORMATION_MISMATCH",
+                            severity="blocking",
+                            field_path="playcall.formation",
+                            entity_id=playcall.team_id,
+                            message=f"playbook '{playcall.playbook_entry_id}' formation mismatch",
+                        )
+                    )
+            except ValidationError as exc:
+                issues.extend(exc.issues)
         try:
             self._resource_resolver.resolve_personnel(playcall.personnel)
         except ValidationError as exc:
@@ -457,6 +493,36 @@ class PreSimValidator:
                         field_path=f"trait_influences.{play_type}",
                         entity_id=play_type,
                         message=str(exc),
+                    )
+                )
+        if issues:
+            raise ValidationError(issues)
+
+    def _validate_trait_role_mapping_coverage(self) -> None:
+        issues: list[ValidationIssue] = []
+        mappings = self._resource_resolver.resolve_trait_role_mappings()
+        by_trait: dict[str, list[object]] = {}
+        for mapping in mappings:
+            by_trait.setdefault(mapping.trait_code, []).append(mapping)
+            if not mapping.phase or not mapping.contest_family or not mapping.role_group or not mapping.evidence_tag:
+                issues.append(
+                    ValidationIssue(
+                        code="INVALID_TRAIT_ROLE_MAPPING_ROW",
+                        severity="blocking",
+                        field_path=f"trait_role_mapping.{mapping.trait_code}",
+                        entity_id=mapping.trait_code,
+                        message="phase/contest_family/role_group/evidence_tag are required",
+                    )
+                )
+        for trait_code in sorted(self._required_traits):
+            if trait_code not in by_trait:
+                issues.append(
+                    ValidationIssue(
+                        code="TRAIT_ROLE_MAPPING_MISSING",
+                        severity="blocking",
+                        field_path="trait_role_mapping",
+                        entity_id=trait_code,
+                        message="required trait has no role mapping row",
                     )
                 )
         if issues:

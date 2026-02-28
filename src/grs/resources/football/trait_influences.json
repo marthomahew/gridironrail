@@ -4,7 +4,7 @@
     "schema_version": "1.0",
     "resource_version": "1.0.0",
     "generated_at": "2026-02-28T00:00:00Z",
-    "checksum": "c40ac759b25780a1c55b2ed1cc6dd58ba1a9736e51e00200db476971cf20135c"
+    "checksum": "2046142201082168e3e703ee460d9fc865c34427b93dd32078fef12cc722a9be"
   },
   "resources": [
     {
@@ -140,11 +140,12 @@
         {
           "family": "decision_risk",
           "offense_weights": {
-            "decision_quality": 0.25,
-            "processing_speed": 0.2,
-            "pocket_sense": 0.15,
-            "timing_precision": 0.2,
-            "composure": 0.2
+            "decision_quality": 0.22,
+            "processing_speed": 0.18,
+            "pocket_sense": 0.14,
+            "timing_precision": 0.16,
+            "throw_touch": 0.16,
+            "short_accuracy": 0.14
           },
           "defense_weights": {
             "recognition": 0.2,
@@ -159,11 +160,12 @@
         {
           "family": "catch_point_contest",
           "offense_weights": {
-            "hands": 0.25,
-            "catch_radius": 0.2,
-            "contested_catch": 0.2,
-            "ball_tracking": 0.2,
-            "body_control": 0.15
+            "hands": 0.2,
+            "catch_radius": 0.18,
+            "contested_catch": 0.18,
+            "ball_tracking": 0.16,
+            "body_control": 0.14,
+            "throw_touch": 0.14
           },
           "defense_weights": {
             "ball_skills_defense": 0.25,
@@ -229,11 +231,10 @@
         {
           "family": "kick_quality",
           "offense_weights": {
-            "throw_power": 0.35,
-            "timing_precision": 0.2,
-            "composure": 0.15,
-            "balance": 0.15,
-            "stamina": 0.15
+            "kick_power": 0.4,
+            "kick_accuracy": 0.25,
+            "hang_time_control": 0.2,
+            "composure": 0.15
           },
           "defense_weights": {
             "get_off": 0.2,
@@ -318,11 +319,10 @@
         {
           "family": "kick_quality",
           "offense_weights": {
-            "throw_power": 0.35,
-            "timing_precision": 0.2,
-            "composure": 0.15,
-            "balance": 0.15,
-            "stamina": 0.15
+            "kick_power": 0.4,
+            "kick_accuracy": 0.25,
+            "hang_time_control": 0.2,
+            "composure": 0.15
           },
           "defense_weights": {
             "yac_vision": 0.3,
@@ -407,10 +407,10 @@
         {
           "family": "kick_quality",
           "offense_weights": {
-            "throw_power": 0.4,
-            "timing_precision": 0.25,
-            "composure": 0.2,
-            "balance": 0.15
+            "kick_power": 0.35,
+            "kick_accuracy": 0.35,
+            "timing_precision": 0.15,
+            "composure": 0.15
           },
           "defense_weights": {
             "get_off": 0.25,
@@ -456,10 +456,10 @@
         {
           "family": "kick_quality",
           "offense_weights": {
-            "throw_power": 0.35,
-            "timing_precision": 0.3,
-            "composure": 0.2,
-            "balance": 0.15
+            "kick_power": 0.35,
+            "kick_accuracy": 0.35,
+            "timing_precision": 0.15,
+            "composure": 0.15
           },
           "defense_weights": {
             "get_off": 0.25,
@@ -543,11 +543,12 @@
         {
           "family": "decision_risk",
           "offense_weights": {
-            "decision_quality": 0.25,
-            "processing_speed": 0.2,
-            "pocket_sense": 0.15,
-            "timing_precision": 0.2,
-            "composure": 0.2
+            "decision_quality": 0.22,
+            "processing_speed": 0.18,
+            "pocket_sense": 0.14,
+            "timing_precision": 0.16,
+            "throw_touch": 0.16,
+            "short_accuracy": 0.14
           },
           "defense_weights": {
             "recognition": 0.2,
@@ -562,11 +563,12 @@
         {
           "family": "catch_point_contest",
           "offense_weights": {
-            "hands": 0.25,
-            "catch_radius": 0.2,
-            "contested_catch": 0.2,
-            "ball_tracking": 0.2,
-            "body_control": 0.15
+            "hands": 0.2,
+            "catch_radius": 0.18,
+            "contested_catch": 0.18,
+            "ball_tracking": 0.16,
+            "body_control": 0.14,
+            "throw_touch": 0.14
           },
           "defense_weights": {
             "ball_skills_defense": 0.25,

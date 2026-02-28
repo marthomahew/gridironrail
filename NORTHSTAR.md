@@ -32,14 +32,14 @@ Completed and enforced now:
 2. Strict pre-sim validation gate on football simulation entrypoints.
 3. Immediate hard-fail enforcement (no warning phase) with forensic artifacts.
 4. Externalized and versioned football resources (personnel/formations/concepts/coaching policies) with checksum + schema checks.
-5. Canonical 90-trait contract at schema/storage/validation level.
+5. Canonical capability-driven trait contract at schema/storage/validation level (no arbitrary fixed count).
 6. Atomic trait persistence keyed by (`player_id`, `trait_code`) in authoritative SQLite.
 7. Validation audit persistence for simulation readiness runs.
 8. CI coverage for strict pre-sim rejection scenarios.
 
 Still in-progress toward full North Star:
 
-1. Deeper phasal weighting integration using the 90 atomic traits.
+1. Deeper phasal weighting integration using the canonical atomic trait catalog.
 2. Broader football outcome fidelity expansion while preserving strict contracts and no-fallback behavior.
 3. Continued UI functionalization and planning surfaces against the same runtime contracts.
 4. Narrative generation itself (2.0 only), while keeping event emission active in 1.0.
@@ -247,6 +247,29 @@ Narrative in 2.0 changes perception/pressure, never football physics.
 2. Expand trait usage inside resolver/session internals without introducing any rescue defaults.
 3. Grow external resource depth (formations/concepts/policies) through schema-versioned data, never hardcoded fallback branches.
 4. Add deeper phasal causality coverage only after all required input contracts stay green at runtime.
+
+## Trait Canon Lock (Approved)
+
+This project now treats trait canon as locked by football capability, not arbitrary count targets.
+
+1. Canon target is 77 atomic traits.
+2. Current implementation has 72 active canonical traits.
+3. Five approved additions are locked for phasal retrofit:
+- `zone_spacing`
+- `throw_on_move`
+- `eye_discipline`
+- `open_field_tackle`
+- `strip_ball_skill`
+4. Trait status tags are mandatory:
+- `core_now`: actively wired in resolver/session contests.
+- `reserved_phasal`: required in schema and validation now; wiring lands in phasal integration.
+5. No removals/additions/renames without trait catalog version bump.
+6. All required traits remain hard-fail validated; no fallback/default rescue paths.
+7. Trait overlap rules stay explicit:
+- `burst` vs `acceleration`
+- `balance` vs `body_control` vs `momentum_management`
+- `throw_power` vs `throw_touch` vs depth accuracy traits
+- `communication` vs `communication_secondary`
 
 ## Schedule/League/Rules Modularity Plan (added)
 

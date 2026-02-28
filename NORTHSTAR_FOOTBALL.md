@@ -22,16 +22,30 @@ Implemented now:
 
 1. Pre-sim validation gate exists and is wired into runtime/session/snap paths.
 2. Validation failures are immediate hard-fails with forensic artifact output.
-3. 90-trait catalog exists with schema/range/completeness validation.
+3. Capability-driven trait catalog exists with schema/range/completeness validation.
 4. Atomic trait persistence is in authoritative storage (`player_id`, `trait_code`).
 5. Externalized resource libraries are loaded from versioned manifests with checksum and schema checks.
 6. Unknown or incompatible resource IDs are blocking failures.
 
 Next football-layer goals:
 
-1. Integrate 90-trait weighting into deeper phasal internals (without fallback/default rescue).
+1. Integrate canonical atomic trait weighting into deeper phasal internals (without fallback/default rescue).
 2. Increase explanatory depth of causality chains and shared responsibility across expanded outcome branches.
 3. Extend resource catalogs (formations/concepts/policies) while keeping compatibility/version enforcement strict.
+
+Trait-canon lock now approved:
+
+1. Canon target is 77 atomic traits.
+2. 72 traits are currently implemented and validated.
+3. Five additional traits are locked for phasal retrofit:
+- `zone_spacing`
+- `throw_on_move`
+- `eye_discipline`
+- `open_field_tackle`
+- `strip_ball_skill`
+4. Trait status tags are locked:
+- `core_now` = wired today.
+- `reserved_phasal` = schema-required now, wired in next phasal passes.
 
 ## Hard Rules (Football Layer)
 
@@ -125,41 +139,79 @@ Required:
 
 All players have the full atomic trait vector. Position/archetype determines weight usage, not trait existence.
 
-### Trait count target: 90 atomic traits
+### Trait catalog policy: capability-driven, not count-driven
 
-Breakdown:
+Trait canon lock:
 
-1. Physical base (12)
-- height, weight, length, strength, burst, top_speed, acceleration, agility, flexibility, balance, stamina, recovery
+1. Target catalog size is 77 atomic traits.
+2. Current active implementation is 72 traits.
+3. Approved additions (reserved_phasal until wired):
+- `zone_spacing`
+- `throw_on_move`
+- `eye_discipline`
+- `open_field_tackle`
+- `strip_ball_skill`
 
-2. Movement/control (10)
-- short_area_change, long_arc_bend, footwork_precision, body_control, redirection, anchor_stability, leverage_control, momentum_management, stop_start_efficiency, pursuit_angles
+Coverage breakdown:
 
-3. Cognitive/mental (12)
-- awareness, processing_speed, recognition, anticipation, discipline, decision_quality, risk_tolerance, communication, composure, adaptability, memory, consistency
+1. Athletic base (7)
+- strength, burst, top_speed, acceleration, agility, balance, stamina
 
-4. Throwing/QB-specific (10)
-- short_accuracy, intermediate_accuracy, deep_accuracy, throw_power, release_quickness, platform_stability, pocket_sense, progression_depth, pressure_response, timing_precision
+2. Movement control (4)
+- body_control, leverage_control, momentum_management, pursuit_angles
+
+3. Cognition and discipline (9)
+- awareness, processing_speed, recognition, anticipation, discipline, decision_quality, communication, communication_secondary, composure
+
+4. QB ball placement and timing (8)
+- short_accuracy, intermediate_accuracy, deep_accuracy, throw_power, throw_touch, release_quickness, pocket_sense, timing_precision
 
 5. Ball and receiving (8)
 - hands, catch_radius, contested_catch, ball_tracking, route_fidelity, release_quality, yac_vision, ball_security
 
-6. Blocking (10)
-- pass_set, hand_placement, mirror_skill, anchor, recovery_blocking, run_block_drive, run_block_positioning, combo_coordination, second_level_targeting, hold_risk_control
+6. Blocking and protection (8)
+- pass_set, hand_placement, mirror_skill, anchor, recovery_blocking, run_block_drive, run_block_positioning, combo_coordination
 
 7. Front-seven pressure/run defense (10)
 - get_off, hand_fighting, rush_plan_diversity, edge_contain, block_shed, gap_integrity, stack_shed, closing_speed, tackle_power, tackle_form
 
-8. Coverage (10)
-- man_footwork, zone_spacing, route_match_skill, leverage_management, transition_speed, ball_skills_defense, press_technique, recovery_speed, communication_secondary, dpi_risk_control
+8. Coverage (8)
+- man_footwork, route_match_skill, leverage_management, transition_speed, ball_skills_defense, press_technique, recovery_speed, dpi_risk_control
 
-9. Availability/injury profile (8)
-- soft_tissue_risk, contact_injury_risk, re_injury_risk, durability, pain_tolerance, load_tolerance, recovery_rate, volatility_profile
+9. Special teams execution (3)
+- kick_power, kick_accuracy, hang_time_control
+
+10. Availability and volatility (7)
+- soft_tissue_risk, contact_injury_risk, re_injury_risk, durability, pain_tolerance, recovery_rate, volatility_profile
+
+Locked additions for phasal integration (5):
+
+1. Coverage spacing and zone integrity
+- `zone_spacing`
+
+2. QB movement-platform throwing quality
+- `throw_on_move`
+
+3. QB manipulation/discipline under disguise
+- `eye_discipline`
+
+4. Space tackling quality
+- `open_field_tackle`
+
+5. Forced-fumble skill expression
+- `strip_ball_skill`
 
 Notes:
 
 - No single synthetic `OVR` may replace atomic trait usage in football calculations.
 - Derived metrics are allowed for analytics and UI, but cannot replace missing atomic inputs.
+- Trait status tags are required on each catalog entry (`core_now` or `reserved_phasal`).
+- No trait add/remove/rename without explicit catalog version bump and migration notes.
+- Overlap constraints are explicit and audited:
+- `burst` != `acceleration`
+- `balance` != `body_control` != `momentum_management`
+- `throw_power` != `throw_touch` != `deep_accuracy`
+- `communication` != `communication_secondary`
 
 ## External Resource Libraries (Not Hardcoded in Resolver)
 
@@ -272,7 +324,7 @@ Conditioned dev-mode outcomes must be explicitly stamped in ledger/events.
 ## Football Data Validation Checklist (Pre-Sim)
 
 1. Schema versions resolved and supported.
-2. Player trait vectors complete (all 90 traits present).
+2. Player trait vectors complete (all required canonical traits present).
 3. Depth charts valid for both teams and required slots.
 4. Personnel package allowed by roster/depth chart.
 5. Formation exists and matches personnel constraints.

@@ -23,7 +23,8 @@ python -m grs.cli --weeks 2 --play-user-game
 - formations
 - offensive/defensive concepts
 - coaching policies
-- Canonical 90-trait contract with atomic storage (`player_id`, `trait_code`) and range/completeness enforcement
+- Capability-driven canonical trait contract (lean core, no arbitrary count) with atomic storage (`player_id`, `trait_code`) and range/completeness enforcement
+- Trait canon lock approved for 77 total traits (72 active now + 5 reserved for phasal retrofit)
 - SQLite authoritative store + DuckDB analytics marts with weekly ETL
 - Retained-game deep logs + non-retained purge-after-derivation policy
 - CSV and Parquet exports from DuckDB marts

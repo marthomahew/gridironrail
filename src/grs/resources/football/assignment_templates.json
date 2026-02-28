@@ -1,0 +1,231 @@
+{
+  "manifest": {
+    "resource_type": "assignment_template",
+    "schema_version": "1.0",
+    "resource_version": "1.0.0",
+    "generated_at": "2026-02-28T00:00:00Z",
+    "checksum": "fa539277ca2fea3304bb5191a845680668ad53d62a9ed66f27adaf7b70094933"
+  },
+  "resources": [
+    {
+      "id": "scrimmage_base",
+      "offense_roles": [
+        "QB",
+        "RB",
+        "WR",
+        "WR",
+        "WR",
+        "TE",
+        "OL",
+        "OL",
+        "OL",
+        "OL",
+        "OL"
+      ],
+      "defense_roles": [
+        "DE",
+        "DT",
+        "DT",
+        "DE",
+        "LB",
+        "LB",
+        "LB",
+        "CB",
+        "CB",
+        "S",
+        "S"
+      ],
+      "pairing_hints": [
+        {
+          "offense_role": "OL",
+          "defense_role": "DE",
+          "technique": "edge_set"
+        },
+        {
+          "offense_role": "OL",
+          "defense_role": "DT",
+          "technique": "inside_anchor"
+        },
+        {
+          "offense_role": "WR",
+          "defense_role": "CB",
+          "technique": "release_vs_press"
+        },
+        {
+          "offense_role": "RB",
+          "defense_role": "LB",
+          "technique": "second_level_fit"
+        }
+      ],
+      "default_technique": "balanced"
+    },
+    {
+      "id": "punt_base",
+      "offense_roles": [
+        "P",
+        "OL",
+        "OL",
+        "OL",
+        "OL",
+        "OL",
+        "TE",
+        "WR",
+        "WR",
+        "CB",
+        "S"
+      ],
+      "defense_roles": [
+        "DE",
+        "DT",
+        "DT",
+        "DE",
+        "LB",
+        "LB",
+        "LB",
+        "CB",
+        "CB",
+        "S",
+        "RB"
+      ],
+      "pairing_hints": [
+        {
+          "offense_role": "P",
+          "defense_role": "DE",
+          "technique": "operation_speed"
+        },
+        {
+          "offense_role": "WR",
+          "defense_role": "CB",
+          "technique": "gunner_release"
+        }
+      ],
+      "default_technique": "special_teams"
+    },
+    {
+      "id": "kickoff_base",
+      "offense_roles": [
+        "K",
+        "LB",
+        "LB",
+        "LB",
+        "CB",
+        "CB",
+        "S",
+        "S",
+        "DE",
+        "DE",
+        "WR"
+      ],
+      "defense_roles": [
+        "RB",
+        "WR",
+        "WR",
+        "WR",
+        "TE",
+        "LB",
+        "LB",
+        "CB",
+        "S",
+        "S",
+        "DE"
+      ],
+      "pairing_hints": [
+        {
+          "offense_role": "K",
+          "defense_role": "RB",
+          "technique": "kick_to_returner"
+        },
+        {
+          "offense_role": "LB",
+          "defense_role": "LB",
+          "technique": "lane_fit"
+        }
+      ],
+      "default_technique": "coverage"
+    },
+    {
+      "id": "field_goal_base",
+      "offense_roles": [
+        "K",
+        "OL",
+        "OL",
+        "OL",
+        "OL",
+        "OL",
+        "TE",
+        "LB",
+        "LB",
+        "DE",
+        "DE"
+      ],
+      "defense_roles": [
+        "DE",
+        "DE",
+        "DT",
+        "DT",
+        "LB",
+        "LB",
+        "LB",
+        "CB",
+        "CB",
+        "S",
+        "S"
+      ],
+      "pairing_hints": [
+        {
+          "offense_role": "K",
+          "defense_role": "DE",
+          "technique": "kick_operation"
+        },
+        {
+          "offense_role": "OL",
+          "defense_role": "DT",
+          "technique": "interior_wall"
+        }
+      ],
+      "default_technique": "kick_block"
+    },
+    {
+      "id": "two_point_base",
+      "offense_roles": [
+        "QB",
+        "RB",
+        "WR",
+        "WR",
+        "WR",
+        "TE",
+        "OL",
+        "OL",
+        "OL",
+        "OL",
+        "OL"
+      ],
+      "defense_roles": [
+        "DE",
+        "DT",
+        "DT",
+        "DE",
+        "LB",
+        "LB",
+        "LB",
+        "CB",
+        "CB",
+        "S",
+        "S"
+      ],
+      "pairing_hints": [
+        {
+          "offense_role": "QB",
+          "defense_role": "S",
+          "technique": "conversion_read"
+        },
+        {
+          "offense_role": "WR",
+          "defense_role": "CB",
+          "technique": "redzone_separation"
+        }
+      ],
+      "default_technique": "conversion"
+    }
+  ]
+}

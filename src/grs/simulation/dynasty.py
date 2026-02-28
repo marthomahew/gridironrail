@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -35,6 +34,7 @@ from grs.core import (
 from grs.export import ExportService
 from grs.football import (
     FootballEngine,
+    PolicyDrivenCoachDecisionEngine,
     FootballResolver,
     GameSessionEngine,
     GameSessionResult,
@@ -94,7 +94,6 @@ class DynastyRuntime:
         self.resource_resolver = ResourceResolver()
         self.pre_sim_validator = PreSimValidator(resource_resolver=self.resource_resolver)
         self.store.save_trait_catalog(self.pre_sim_validator.trait_catalog())
-        self.trait_weighted_enabled = os.getenv("GRS_TRAIT_WEIGHTED", "1") == "1"
 
         self.org_state: LeagueState = build_default_league(team_count=8)
         self.user_team_id = user_team_id
@@ -103,15 +102,14 @@ class DynastyRuntime:
             FootballResolver(
                 random_source=self.rand.spawn("football"),
                 resource_resolver=self.resource_resolver,
-                trait_weighted_enabled=self.trait_weighted_enabled,
             ),
             validator=self.pre_sim_validator,
         )
+        self.coach_engine = PolicyDrivenCoachDecisionEngine(repository=self.resource_resolver, policy_id="balanced_default")
         self.game_session = GameSessionEngine(
             self.football,
+            self.coach_engine,
             validator=self.pre_sim_validator,
-            resource_resolver=self.resource_resolver,
-            coaching_policy_id="balanced_default",
             random_source=self.rand.spawn("session"),
         )
         self.retention_policy = RetentionPolicy()
@@ -447,10 +445,10 @@ class DynastyRuntime:
             retained=retained,
         )
 
-        def provider(state: GameSessionState, offense_team_id: str, defense_team_id: str) -> PlaycallRequest:
+        def provider(state: GameSessionState, offense_team_id: str, defense_team_id: str) -> PlaycallRequest | None:
             if offense_team_id == self.user_team_id and self.pending_user_playcall:
                 return self.pending_user_playcall
-            return self.game_session.build_default_playcall(state, offense_team_id)
+            return None
 
         session_result = self.game_session.run_game(initial_state, home, away, mode=mode, playcall_provider=provider)
 

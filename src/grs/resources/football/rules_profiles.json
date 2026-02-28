@@ -1,0 +1,38 @@
+{
+  "manifest": {
+    "resource_type": "rules_profile",
+    "schema_version": "1.0",
+    "resource_version": "1.0.0",
+    "generated_at": "2026-02-28T00:00:00Z",
+    "checksum": "ea7403742d5cd51703e7b7144ae3c12597370b83d1a6d90d2acb3af4a6052bb0"
+  },
+  "resources": [
+    {
+      "id": "nfl_placeholder_v1",
+      "clock": {
+        "regulation_quarters": 4,
+        "regulation_seconds": 900,
+        "overtime_seconds": 600
+      },
+      "down_distance": {
+        "first_down_distance": 10,
+        "max_down": 4
+      },
+      "scoring": {
+        "touchdown": 6,
+        "field_goal": 3,
+        "extra_point": 1,
+        "two_point": 2,
+        "safety": 2
+      },
+      "special_teams": {
+        "kickoff_touchback_spot": 25,
+        "punt_touchback_spot": 20
+      },
+      "metadata": {
+        "placeholder": true,
+        "notes": "NFL-like defaults for 1.0"
+      }
+    }
+  ]
+}

@@ -2,14 +2,44 @@
   "manifest": {
     "resource_type": "coaching_policy",
     "schema_version": "1.0",
-    "resource_version": "1.0.0",
+    "resource_version": "1.1.0",
     "generated_at": "2026-02-28T00:00:00Z",
-    "checksum": "7a8327b23b47c5e587905b51b8f95c767ef2e401ec918017028142ae1437f3b0"
+    "checksum": "a02e50f0610ba86773eb58a811f00d52a35d3abeb7daab64b474dbf084f17393"
   },
   "resources": [
     {
       "id": "balanced_default",
       "description": "Balanced baseline policy",
+      "playbook_by_posture": {
+        "normal": [
+          "run_inside_zone",
+          "pass_spacing",
+          "pass_dagger"
+        ],
+        "short_yardage": [
+          "run_goal_line",
+          "run_inside_zone"
+        ],
+        "third_and_long": [
+          "pass_dagger",
+          "pass_spacing"
+        ],
+        "fourth_and_long": [
+          "punt_safe"
+        ],
+        "field_goal_try": [
+          "field_goal_standard"
+        ],
+        "extra_point_try": [
+          "extra_point_standard"
+        ],
+        "kickoff": [
+          "kickoff_sky"
+        ],
+        "two_point_try": [
+          "two_point_mesh"
+        ]
+      },
       "defaults": {
         "normal": {
           "personnel": "11",
