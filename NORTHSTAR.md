@@ -1,0 +1,243 @@
+# Gridiron Rail: Sundays (GR:S) - North Star + Implementation Charter
+
+Last updated: 2026-02-28
+
+## One-sentence definition
+
+GR:S is a data-first pro football dynasty simulation where on-field outcomes emerge from phasal, multi-actor rep interactions and off-field outcomes emerge from ownership-driven organizational pressure, with no soft fails, no outcome smoothing, and deep PFF-style accountability.
+
+## Product targets
+
+### 1.0 (MVP)
+
+Ship everything except narrative generation:
+
+- Football Layer (phasal + multi-actor matchups, rep ledger, causality)
+- Organizational Layer (ownership + roster/cap/draft/FA/trades/coaching/dev/injuries)
+- UI Glue Layer (Qt/PySide6 desktop, Windows/macOS)
+- Stats + exports (derivable, analysis-ready)
+- Modding-first data model (fictional default + realism mod support)
+- Non-deterministic gameplay (different believable outcomes on re-run)
+- Seeded determinism only for tests/dev harnesses
+
+### 2.0
+
+Add Narrative Engine as an interpretation layer that consumes events from 1.0 systems.
+
+## Global non-negotiables
+
+1. No guardrails: no soft failures, silent fallbacks, parity stabilizers, rubber-banding, or score smoothing.
+2. No dual sim engines: Play/Sim/Off-screen all use one football resolver path; only presentation changes.
+3. Player is not a puppeteer: only parameter control (playcall, personnel, formation, posture, timeouts, etc.).
+4. Perception separation is mandatory: AI/player decisions use perceived data, not ground truth.
+5. Hard-stop on integrity failures: stop immediately and emit forensic artifact.
+6. Outcome-focused specs: define outputs and guarantees, not rigid implementation scripts.
+7. Modular boundaries by contract: systems interact through explicit interfaces only.
+
+## Difficulty philosophy
+
+Allowed (global rates/variance/information quality only):
+
+- Volatility width
+- Injury frequency/severity
+- Aging predictability variance
+- Upset tail frequency
+- Scouting noise/confidence width
+- Negotiation friction
+- Ownership pressure patience
+
+Not allowed:
+
+- Per-team resolution cheats
+- Comeback boosts
+- Post-hoc balancing
+- User-team-only physics differences
+
+## Persistence and retention
+
+Always persist:
+
+- Season/career/team/player aggregates
+- Standings, awards, records
+- Transactions, cap history, contracts
+
+Conditional deep retention:
+
+- Keep full play/rep/causality logs for retained games (playoffs/championships/instant classics; optional rivalry/record games)
+- Non-retained games: derive summaries first, then purge deep logs
+
+## Football layer north-star outcomes
+
+Each snap must produce:
+
+1. Official play result (yards/turnover/score/penalty/clock/next state)
+2. Rep ledger entries (PFF-depth accountability)
+3. Causality chain (machine-traceable "why")
+
+Required properties:
+
+- Parameterized intent -> plausible bounded outcomes
+- Multi-actor support (double teams, brackets, chip-release, stunts, pursuit convergence)
+- Phasal outcome structure (pre-snap -> early leverage -> engagement -> decision -> terminal -> aftermath)
+- Shared responsibility weights and evidence handles
+- Turnovers, penalties, and injuries attributable to represented contexts
+- Mode invariance across Play/Sim/Off-screen
+
+### Snap context package (SCP)
+
+Must include:
+
+- Situation (score/down-distance/field/clock/timeouts/phase)
+- Participants (valid 22-man field state)
+- In-game states (fatigue/wear/injury limitations/discipline risk)
+- Parameterized intent (personnel/formation/concepts/posture)
+- Random source handle
+
+### Optional dev/casual feature
+
+Force Outcome (dev/casual mode only):
+
+- Re-sim same pre-snap context until target outcome or max attempts
+- On failure, explicit fail state
+- Full audit stamp (conditioned/forced)
+
+## Organizational layer north-star outcomes
+
+Must produce a credible multi-season ecosystem with:
+
+- League calendar and phase gates (regular/postseason/offseason)
+- Ownership as first-class pressure actor
+- Roster construction under cap and roster constraints
+- Contracts/dead money/restructures/extensions
+- Draft/FA/trades under uncertainty and imperfect information
+- Coaching/staff effects on evaluation/development/discipline
+- Player lifecycle (development/peak/decline/retirement)
+- Long-term history archives
+
+Hard limits:
+
+- No outcome overrides after games finalize
+- No privileged truth access for AI decisions
+- Same rules for user and AI teams
+
+## Required entity model (1.0)
+
+League/competition:
+
+- League, Conference, Division, Season, Week, Schedule, Game, Play/Drive refs, Award, RecordBook
+
+Franchise/org:
+
+- Team/Franchise, Owner, Front Office, Coaches, Scouts, Medical
+
+People:
+
+- Player, Prospect (Agent/Referee optional in 1.0)
+
+Assets/finance:
+
+- Contract, ContractYear, bonus/guarantee, cap ledger entries, draft picks, trade records
+
+State/events:
+
+- Injury records, transaction records, coaching changes, scouting/evaluation snapshots, identity profile
+
+## Real vs perceived data rule
+
+Ground truth (hidden):
+
+- True attributes, dev curves, volatility, injury susceptibility, fit multipliers
+
+Perceived (decision surface):
+
+- Scouting/coaching/medical reports + confidence bands
+- Performance samples and derived analytics
+- Minimal rumors/signals in 1.0
+
+AI and user decisions must consume perceived artifacts only.
+
+## UI glue layer (PySide6 Qt Widgets)
+
+Role:
+
+- Submit action requests
+- Render perceived views and derived analytics
+- Drill down season -> game -> play -> rep
+
+Hard limits:
+
+- UI never resolves simulation outcomes
+- UI never mutates authoritative state directly
+- UI never sees ground truth except explicit debug/dev mode
+
+Required 1.0 screens:
+
+- Org: roster, depth chart, contracts/cap, scouting, draft, FA, trades, coaching/staff, ownership pressure
+- Game: play parameters, drive/game summary, diagnostics
+- Film room (retained games): play list -> rep ledger -> causality
+- History: standings/archives
+
+## Statistics vision
+
+Core rule:
+
+- Stats are derivable from retained atomic snap/rep records and non-retained summaries; no synthetic orphan stats.
+
+Must support:
+
+- Traditional box stats
+- Efficiency/situational splits
+- Trench, coverage, QB decision, run-fit outcomes
+- Shared responsibility grading rollups
+
+## Narrative 2.0 future-proofing (required in 1.0)
+
+Every subsystem emits normalized Narrative Event records even if unused in 1.0:
+
+- event_id, time, scope, type, actors, claims, evidence_handles, severity, confidentiality_tier
+
+Narrative in 2.0 changes perception/pressure, never football physics.
+
+## Technical constraints and implementation guardrails
+
+- Python baseline target: 3.12+ (current dev environment may be newer)
+- Qt binding policy: PySide6 only (no PyQt/PySide2 mixed bindings)
+- Packaging-safe practices: avoid runtime writes into install tree and avoid dynamic import sprawl
+- Charting: Matplotlib via Qt backend behind adapter (swap-friendly)
+- Storage strategy: dual-store (SQLite authoritative + DuckDB analytics)
+- RNG correctness: injected random source with substream spawning per simulation context
+- Modding 1.0: data-pack only (schema-validated JSON/CSV), no arbitrary Python plugin execution
+- Scope 1.0: single-player local franchise
+
+## Reliability and integrity requirements
+
+- Engine integrity failures must hard-stop and persist forensic artifact snapshot
+- Season rollover integrity checks are transactional
+- No silent fallback when constraints are violated (cap/roster/depth chart/state integrity)
+
+## Testing and quality gates
+
+Required validation areas:
+
+- Determinism harness (seeded reproducibility)
+- Non-deterministic gameplay distributions in normal mode
+- Mode invariance (Play/Sim/Off-screen)
+- Retention behavior correctness (kept vs purged deep logs)
+- Perception separation enforcement
+- Cap/roster constraint enforcement
+- Replay determinism from seed + action stream
+- Export parity (CSV/Parquet row consistency)
+
+Tooling baseline:
+
+- `pytest`
+- `ruff`
+- `mypy`
+- CI smoke run of CLI flow
+
+## Working intent for all future iterations
+
+- Keep advancing toward a credible dynasty loop first (vertical slices over speculative breadth)
+- Preserve contract boundaries and auditability over quick hacks
+- Prefer explicit failure with forensic context over hidden recovery
+- Add complexity only when it increases explanatory power, accountability, and derivability
