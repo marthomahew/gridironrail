@@ -5,6 +5,7 @@ from datetime import date
 
 from grs.contracts import LeagueSnapshotRef, NarrativeEvent, ScheduleEntry, TeamStanding
 from grs.core import make_id, now_utc
+from grs.football.traits import generate_player_traits
 from grs.org.entities import (
     CapLedgerEntry,
     Contract,
@@ -158,6 +159,14 @@ class OrganizationalEngine:
                 volatility_truth=max(0.1, min(1.0, self._rand.rand())),
                 injury_susceptibility_truth=max(0.1, min(0.9, self._rand.rand())),
                 hidden_dev_curve=max(30.0, min(95.0, selected.draft_grade_truth + (self._rand.rand() * 16.0 - 8.0))),
+                traits={},
+            )
+            player.traits = generate_player_traits(
+                player_id=player.player_id,
+                position=player.position,
+                overall_truth=player.overall_truth,
+                volatility_truth=player.volatility_truth,
+                injury_susceptibility_truth=player.injury_susceptibility_truth,
             )
             team.roster.append(player)
 

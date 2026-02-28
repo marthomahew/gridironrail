@@ -1,0 +1,18 @@
+{
+  "manifest": {
+    "resource_type": "concept_offense",
+    "schema_version": "1.0",
+    "resource_version": "1.0.0",
+    "generated_at": "2026-02-28T00:00:00Z",
+    "checksum": "1443e048d66bc3cab39ce90ed5a4f218a44ad1ba3d5a8a499e59f8f9b5b08692"
+  },
+  "resources": [
+    {"id": "spacing", "play_types": ["pass"], "phase": "offense"},
+    {"id": "dagger", "play_types": ["pass"], "phase": "offense"},
+    {"id": "inside_zone", "play_types": ["run"], "phase": "offense"},
+    {"id": "punt_safe", "play_types": ["punt"], "phase": "special"},
+    {"id": "field_goal_unit", "play_types": ["field_goal", "extra_point"], "phase": "special"},
+    {"id": "kickoff_sky", "play_types": ["kickoff"], "phase": "special"},
+    {"id": "two_point_mesh", "play_types": ["two_point"], "phase": "special"}
+  ]
+}

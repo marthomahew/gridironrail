@@ -35,7 +35,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-grs = ["py.typed"]
+grs = ["py.typed", "resources/**/*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

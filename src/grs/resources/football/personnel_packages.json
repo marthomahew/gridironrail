@@ -1,0 +1,87 @@
+{
+  "manifest": {
+    "resource_type": "personnel_package",
+    "schema_version": "1.0",
+    "resource_version": "1.0.0",
+    "generated_at": "2026-02-28T00:00:00Z",
+    "checksum": "f89895b1ea5d2374ffa38fb7bffacb6ea316926ffb05adafd01d6589882f1c34"
+  },
+  "resources": [
+    {
+      "id": "11",
+      "name": "1 RB 1 TE 3 WR",
+      "counts": {
+        "QB": 1,
+        "RB": 1,
+        "TE": 1,
+        "WR": 3,
+        "OL": 5
+      },
+      "phase": "offense"
+    },
+    {
+      "id": "12",
+      "name": "1 RB 2 TE 2 WR",
+      "counts": {
+        "QB": 1,
+        "RB": 1,
+        "TE": 2,
+        "WR": 2,
+        "OL": 5
+      },
+      "phase": "offense"
+    },
+    {
+      "id": "21",
+      "name": "2 RB 1 TE 2 WR",
+      "counts": {
+        "QB": 1,
+        "RB": 2,
+        "TE": 1,
+        "WR": 2,
+        "OL": 5
+      },
+      "phase": "offense"
+    },
+    {
+      "id": "punt",
+      "name": "Punt Team",
+      "counts": {
+        "P": 1
+      },
+      "phase": "special"
+    },
+    {
+      "id": "field_goal",
+      "name": "Field Goal Team",
+      "counts": {
+        "K": 1
+      },
+      "phase": "special"
+    },
+    {
+      "id": "kickoff",
+      "name": "Kickoff Team",
+      "counts": {
+        "K": 1
+      },
+      "phase": "special"
+    },
+    {
+      "id": "extra_point",
+      "name": "Extra Point Team",
+      "counts": {
+        "K": 1
+      },
+      "phase": "special"
+    },
+    {
+      "id": "two_point",
+      "name": "Two Point Team",
+      "counts": {
+        "QB": 1
+      },
+      "phase": "special"
+    }
+  ]
+}

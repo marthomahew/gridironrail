@@ -35,9 +35,9 @@ def build_context(play_id: str, mode: SimMode = SimMode.PLAY) -> SnapContextPack
         in_game_states=states,
         intent=ParameterizedIntent(
             personnel="11",
-            formation="gun",
+            formation="gun_trips",
             offensive_concept="spacing",
-            defensive_concept="cover3",
+            defensive_concept="cover3_match",
             play_type=PlayType.PASS,
         ),
     )

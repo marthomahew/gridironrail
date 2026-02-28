@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from grs.football.traits import canonical_trait_catalog
+
 
 @dataclass(slots=True)
 class ModValidationResult:
@@ -27,13 +29,38 @@ class DataPackValidator:
 
     def validate_players_csv(self, csv_path: Path) -> ModValidationResult:
         errors: list[str] = []
-        required_cols = {"player_id", "name", "position", "overall_truth"}
+        trait_catalog = canonical_trait_catalog()
+        trait_columns = {entry.trait_code for entry in trait_catalog if entry.required}
+        required_cols = {"player_id", "name", "position", "overall_truth"} | trait_columns
+        bounds = {entry.trait_code: (entry.min_value, entry.max_value) for entry in trait_catalog}
+
         with csv_path.open("r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
             headers = set(reader.fieldnames or [])
             missing = sorted(required_cols - headers)
             if missing:
                 errors.append(f"players.csv missing columns: {', '.join(missing)}")
+                return ModValidationResult(valid=False, errors=errors)
+
+            for row_idx, row in enumerate(reader, start=2):
+                for trait_code in sorted(trait_columns):
+                    raw = row.get(trait_code)
+                    if raw is None or raw == "":
+                        errors.append(f"players.csv row {row_idx} missing trait '{trait_code}'")
+                        continue
+                    try:
+                        value = float(raw)
+                    except ValueError:
+                        errors.append(f"players.csv row {row_idx} trait '{trait_code}' must be numeric")
+                        continue
+                    min_v, max_v = bounds[trait_code]
+                    if value < min_v or value > max_v:
+                        errors.append(
+                            f"players.csv row {row_idx} trait '{trait_code}' out of range [{min_v}, {max_v}]"
+                        )
+                if len(errors) >= 50:
+                    errors.append("players.csv validation stopped after 50 errors")
+                    break
         return ModValidationResult(valid=not errors, errors=errors)
 
 

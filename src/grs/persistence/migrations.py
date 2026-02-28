@@ -235,6 +235,43 @@ MIGRATIONS: list[tuple[int, str]] = [
         );
         """,
     ),
+    (
+        2,
+        """
+        CREATE TABLE IF NOT EXISTS trait_catalog (
+            trait_code TEXT PRIMARY KEY,
+            dtype TEXT NOT NULL,
+            min_value REAL NOT NULL,
+            max_value REAL NOT NULL,
+            required INTEGER NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            version TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS player_traits (
+            player_id TEXT NOT NULL,
+            trait_code TEXT NOT NULL,
+            value REAL NOT NULL,
+            PRIMARY KEY (player_id, trait_code),
+            FOREIGN KEY (player_id) REFERENCES players(player_id) ON DELETE CASCADE,
+            FOREIGN KEY (trait_code) REFERENCES trait_catalog(trait_code)
+        );
+
+        CREATE TABLE IF NOT EXISTS simulation_validation_runs (
+            run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            season INTEGER NOT NULL,
+            week INTEGER NOT NULL,
+            game_id TEXT NOT NULL,
+            home_team_id TEXT NOT NULL,
+            away_team_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            blocking_issues_json TEXT NOT NULL,
+            warning_issues_json TEXT NOT NULL,
+            validated_at TEXT NOT NULL
+        );
+        """,
+    ),
 ]
 
 

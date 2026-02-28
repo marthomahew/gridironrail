@@ -16,6 +16,23 @@ It defines:
 
 This must be complete and stable before full phasal-engine expansion.
 
+## Current implementation status
+
+Implemented now:
+
+1. Pre-sim validation gate exists and is wired into runtime/session/snap paths.
+2. Validation failures are immediate hard-fails with forensic artifact output.
+3. 90-trait catalog exists with schema/range/completeness validation.
+4. Atomic trait persistence is in authoritative storage (`player_id`, `trait_code`).
+5. Externalized resource libraries are loaded from versioned manifests with checksum and schema checks.
+6. Unknown or incompatible resource IDs are blocking failures.
+
+Next football-layer goals:
+
+1. Integrate 90-trait weighting into deeper phasal internals (without fallback/default rescue).
+2. Increase explanatory depth of causality chains and shared responsibility across expanded outcome branches.
+3. Extend resource catalogs (formations/concepts/policies) while keeping compatibility/version enforcement strict.
+
 ## Hard Rules (Football Layer)
 
 1. No fallback/default simulation paths.
@@ -274,6 +291,14 @@ Failing any checklist item aborts simulation start.
 3. Implement trait ingestion pipeline and completeness checks.
 4. Expand phasal engine internals only after inputs/resources are guaranteed valid.
 5. Add regression fixtures for malformed data to prove hard-fail behavior.
+
+## Build order status
+
+1. Completed: schema validators and pre-sim gate enforcement.
+2. Completed: external resource loaders and compatibility checks.
+3. Completed: trait ingestion, atomic storage, and completeness checks.
+4. In progress: deeper phasal engine internals.
+5. Completed: malformed-data regression fixtures for hard-fail behavior.
 
 ## Success Criteria for Football Layer 1.0 Readiness
 

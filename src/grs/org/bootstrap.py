@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from grs.contracts import DepthChartAssignment
+from grs.football.traits import generate_player_traits
 from grs.org.engine import LeagueState
 from grs.org.entities import Franchise, LeagueStandingBook, Owner, Player, StaffMember, TeamIdentityProfile
 
@@ -71,17 +72,28 @@ def build_default_league(team_count: int = 8, season: int = 2026) -> LeagueState
         positions = ["QB", "RB", "WR", "TE", "OL", "DL", "LB", "CB", "S", "K", "P"]
         for p_idx in range(53):
             position = positions[p_idx % len(positions)]
+            player_id = f"{team_id}_P{p_idx + 1:02d}"
+            overall_truth = 55 + ((p_idx % 30) * 1.2)
+            volatility_truth = 0.25 + ((p_idx % 7) * 0.08)
+            injury_susceptibility_truth = 0.2 + ((p_idx % 8) * 0.07)
             roster.append(
                 Player(
-                    player_id=f"{team_id}_P{p_idx + 1:02d}",
+                    player_id=player_id,
                     team_id=team_id,
                     name=f"{team_id} Player {p_idx + 1}",
                     position=position,
                     age=22 + (p_idx % 12),
-                    overall_truth=55 + ((p_idx % 30) * 1.2),
-                    volatility_truth=0.25 + ((p_idx % 7) * 0.08),
-                    injury_susceptibility_truth=0.2 + ((p_idx % 8) * 0.07),
+                    overall_truth=overall_truth,
+                    volatility_truth=volatility_truth,
+                    injury_susceptibility_truth=injury_susceptibility_truth,
                     hidden_dev_curve=50 + ((p_idx % 35) * 1.1),
+                    traits=generate_player_traits(
+                        player_id=player_id,
+                        position=position,
+                        overall_truth=overall_truth,
+                        volatility_truth=volatility_truth,
+                        injury_susceptibility_truth=injury_susceptibility_truth,
+                    ),
                 )
             )
         depth_chart = _build_depth_chart(team_id, roster)

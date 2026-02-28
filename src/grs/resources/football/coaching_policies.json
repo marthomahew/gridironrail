@@ -1,0 +1,37 @@
+{
+  "manifest": {
+    "resource_type": "coaching_policy",
+    "schema_version": "1.0",
+    "resource_version": "1.0.0",
+    "generated_at": "2026-02-28T00:00:00Z",
+    "checksum": "7a8327b23b47c5e587905b51b8f95c767ef2e401ec918017028142ae1437f3b0"
+  },
+  "resources": [
+    {
+      "id": "balanced_default",
+      "description": "Balanced baseline policy",
+      "defaults": {
+        "normal": {
+          "personnel": "11",
+          "formation_pass": "gun_trips",
+          "formation_run": "singleback",
+          "offense_pass": "spacing",
+          "offense_run": "inside_zone",
+          "defense_base": "cover3_match"
+        },
+        "short_yardage": {
+          "personnel": "21",
+          "formation_run": "singleback",
+          "offense_run": "inside_zone",
+          "defense_base": "base_over"
+        },
+        "third_and_long": {
+          "personnel": "11",
+          "formation_pass": "gun_trips",
+          "offense_pass": "dagger",
+          "defense_base": "quarters"
+        }
+      }
+    }
+  ]
+}

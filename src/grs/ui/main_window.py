@@ -5,6 +5,7 @@ from typing import Callable
 
 from grs.contracts import ActionRequest, ActionResult, ActionType
 from grs.core import make_id
+from grs.football import ResourceResolver
 from grs.ui.charting import ChartAdapter, MatplotlibChartAdapter
 
 
@@ -38,6 +39,7 @@ class MainWindowFactory:
         )
 
         adapter = self.chart_adapter
+        resolver = ResourceResolver()
 
         class MainWindow(QMainWindow):
             def __init__(self) -> None:
@@ -98,9 +100,18 @@ class MainWindowFactory:
                 self.play_type = QComboBox()
                 for value in ["run", "pass", "punt", "field_goal", "extra_point", "two_point", "kickoff"]:
                     self.play_type.addItem(value)
+                self.personnel = QComboBox()
+                for value in resolver.personnel_ids():
+                    self.personnel.addItem(value)
                 self.formation = QComboBox()
-                for value in ["gun_trips", "singleback", "i_form", "goal_line"]:
+                for value in resolver.formation_ids():
                     self.formation.addItem(value)
+                self.offense_concept = QComboBox()
+                for value in resolver.offense_concept_ids():
+                    self.offense_concept.addItem(value)
+                self.defense_concept = QComboBox()
+                for value in resolver.defense_concept_ids():
+                    self.defense_concept.addItem(value)
 
                 set_call = QPushButton("Set Playcall")
                 set_call.clicked.connect(self._set_playcall)
@@ -111,8 +122,14 @@ class MainWindowFactory:
 
                 playcall_row.addWidget(QLabel("Play Type"))
                 playcall_row.addWidget(self.play_type)
+                playcall_row.addWidget(QLabel("Personnel"))
+                playcall_row.addWidget(self.personnel)
                 playcall_row.addWidget(QLabel("Formation"))
                 playcall_row.addWidget(self.formation)
+                playcall_row.addWidget(QLabel("Offense"))
+                playcall_row.addWidget(self.offense_concept)
+                playcall_row.addWidget(QLabel("Defense"))
+                playcall_row.addWidget(self.defense_concept)
                 playcall_row.addWidget(set_call)
                 playcall_row.addWidget(play_game)
                 playcall_row.addWidget(sim_game)
@@ -196,9 +213,9 @@ class MainWindowFactory:
                 payload = {
                     "play_type": self.play_type.currentText(),
                     "formation": self.formation.currentText(),
-                    "personnel": "11",
-                    "offensive_concept": "spacing" if self.play_type.currentText() == "pass" else "inside_zone",
-                    "defensive_concept": "cover3_match",
+                    "personnel": self.personnel.currentText(),
+                    "offensive_concept": self.offense_concept.currentText(),
+                    "defensive_concept": self.defense_concept.currentText(),
                     "tempo": "normal",
                     "aggression": "balanced",
                 }

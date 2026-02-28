@@ -22,5 +22,7 @@ jobs:
         run: mypy
       - name: Pytest
         run: pytest -q
+      - name: Pytest strict pre-sim gate
+        run: pytest -q tests/test_presim_validation.py
       - name: CLI smoke
         run: python -m grs.cli --weeks 1

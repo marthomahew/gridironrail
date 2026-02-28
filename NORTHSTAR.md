@@ -24,6 +24,26 @@ Ship everything except narrative generation:
 
 Add Narrative Engine as an interpretation layer that consumes events from 1.0 systems.
 
+## 1.0 status snapshot (current implementation)
+
+Completed and enforced now:
+
+1. Single football resolver path for Play/Sim/Off-screen.
+2. Strict pre-sim validation gate on football simulation entrypoints.
+3. Immediate hard-fail enforcement (no warning phase) with forensic artifacts.
+4. Externalized and versioned football resources (personnel/formations/concepts/coaching policies) with checksum + schema checks.
+5. Canonical 90-trait contract at schema/storage/validation level.
+6. Atomic trait persistence keyed by (`player_id`, `trait_code`) in authoritative SQLite.
+7. Validation audit persistence for simulation readiness runs.
+8. CI coverage for strict pre-sim rejection scenarios.
+
+Still in-progress toward full North Star:
+
+1. Deeper phasal weighting integration using the 90 atomic traits.
+2. Broader football outcome fidelity expansion while preserving strict contracts and no-fallback behavior.
+3. Continued UI functionalization and planning surfaces against the same runtime contracts.
+4. Narrative generation itself (2.0 only), while keeping event emission active in 1.0.
+
 ## Global non-negotiables
 
 1. No guardrails: no soft failures, silent fallbacks, parity stabilizers, rubber-banding, or score smoothing.
@@ -220,6 +240,13 @@ Narrative in 2.0 changes perception/pressure, never football physics.
 - Season rollover integrity checks are transactional
 - No silent fallback when constraints are violated (cap/roster/depth chart/state integrity)
 - No silent fallback when football/org calculation inputs are incomplete; hard-stop with explicit error code and context
+
+## Locked sequencing for upcoming implementation
+
+1. Keep strict pre-sim gate as non-bypassable for all sim-triggering paths.
+2. Expand trait usage inside resolver/session internals without introducing any rescue defaults.
+3. Grow external resource depth (formations/concepts/policies) through schema-versioned data, never hardcoded fallback branches.
+4. Add deeper phasal causality coverage only after all required input contracts stay green at runtime.
 
 ## Testing and quality gates
 

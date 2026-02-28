@@ -17,6 +17,7 @@ from grs.contracts import (
     RetentionPolicy,
     ScheduleEntry,
     SimMode,
+    ValidationError,
     WeekSimulationResult,
 )
 from grs.core import (
@@ -31,7 +32,14 @@ from grs.core import (
     seeded_random,
 )
 from grs.export import ExportService
-from grs.football import FootballEngine, FootballResolver, GameSessionEngine, GameSessionResult
+from grs.football import (
+    FootballEngine,
+    FootballResolver,
+    GameSessionEngine,
+    GameSessionResult,
+    PreSimValidator,
+    ResourceResolver,
+)
 from grs.org import LeagueState, OrganizationalEngine, build_default_league, generate_season_schedule, rank_standings
 from grs.org.entities import Franchise
 from grs.persistence import AuthoritativeStore, GameRetentionContext, run_weekly_etl, should_retain_game
@@ -82,12 +90,24 @@ class DynastyRuntime:
         self.event_bus = EventBus()
         self.store = AuthoritativeStore(self.paths.sqlite_path)
         self.store.initialize_schema()
+        self.resource_resolver = ResourceResolver()
+        self.pre_sim_validator = PreSimValidator(resource_resolver=self.resource_resolver)
+        self.store.save_trait_catalog(self.pre_sim_validator.trait_catalog())
 
         self.org_state: LeagueState = build_default_league(team_count=8)
         self.user_team_id = user_team_id
         self.org_engine = OrganizationalEngine(rand=self.rand.spawn("org"), difficulty=self.difficulty)
-        self.football = FootballEngine(FootballResolver(random_source=self.rand.spawn("football")))
-        self.game_session = GameSessionEngine(self.football)
+        self.football = FootballEngine(
+            FootballResolver(random_source=self.rand.spawn("football")),
+            validator=self.pre_sim_validator,
+        )
+        self.game_session = GameSessionEngine(
+            self.football,
+            validator=self.pre_sim_validator,
+            resource_resolver=self.resource_resolver,
+            coaching_policy_id="balanced_default",
+            random_source=self.rand.spawn("session"),
+        )
         self.retention_policy = RetentionPolicy()
 
         self.halted = False
@@ -142,16 +162,37 @@ class DynastyRuntime:
 
         if action == ActionType.SET_PLAYCALL:
             payload = request.payload
+            required = {"personnel", "formation", "offensive_concept", "defensive_concept", "play_type"}
+            missing = sorted(required - set(payload.keys()))
+            if missing:
+                return ActionResult(
+                    request.request_id,
+                    False,
+                    f"missing playcall fields: {', '.join(missing)}",
+                )
+            try:
+                play_type = PlayType(str(payload["play_type"]))
+            except ValueError:
+                return ActionResult(request.request_id, False, f"invalid play_type '{payload['play_type']}'")
             self.pending_user_playcall = PlaycallRequest(
                 team_id=request.actor_team_id,
-                personnel=payload.get("personnel", "11"),
-                formation=payload.get("formation", "gun_trips"),
-                offensive_concept=payload.get("offensive_concept", "spacing"),
-                defensive_concept=payload.get("defensive_concept", "cover3_match"),
-                tempo=payload.get("tempo", "normal"),
-                aggression=payload.get("aggression", "balanced"),
-                play_type=PlayType(payload.get("play_type", PlayType.PASS.value)),
+                personnel=str(payload["personnel"]),
+                formation=str(payload["formation"]),
+                offensive_concept=str(payload["offensive_concept"]),
+                defensive_concept=str(payload["defensive_concept"]),
+                tempo=str(payload.get("tempo", "normal")),
+                aggression=str(payload.get("aggression", "balanced")),
+                play_type=play_type,
             )
+            try:
+                self.pre_sim_validator.validate_playcall(self.pending_user_playcall)
+            except ValidationError as exc:
+                return ActionResult(
+                    request.request_id,
+                    False,
+                    "playcall rejected by pre-sim gate",
+                    data={"issues": [asdict(i) for i in exc.issues]},
+                )
             return ActionResult(request.request_id, True, "playcall updated", data=asdict(self.pending_user_playcall))
 
         if action in {ActionType.PLAY_USER_GAME, ActionType.PLAY_SNAP, ActionType.SIM_DRIVE}:
@@ -354,6 +395,26 @@ class DynastyRuntime:
         home = self._team(entry.home_team_id)
         away = self._team(entry.away_team_id)
 
+        initial_state = GameSessionState(
+            game_id=entry.game_id,
+            season=self.org_state.season,
+            week=self.org_state.week,
+            home_team_id=home.team_id,
+            away_team_id=away.team_id,
+            quarter=1,
+            clock_seconds=900,
+            home_score=0,
+            away_score=0,
+            possession_team_id=home.team_id,
+            down=1,
+            distance=10,
+            yard_line=25,
+            drive_index=1,
+            timeouts_home=3,
+            timeouts_away=3,
+        )
+        self._validate_game_readiness(entry, home, away, initial_state)
+
         self.org_engine.ensure_depth_chart_valid(home)
         self.org_engine.ensure_depth_chart_valid(away)
         self.org_engine.validate_franchise_constraints(home)
@@ -380,38 +441,10 @@ class DynastyRuntime:
             retained=retained,
         )
 
-        initial_state = GameSessionState(
-            game_id=entry.game_id,
-            season=self.org_state.season,
-            week=self.org_state.week,
-            home_team_id=home.team_id,
-            away_team_id=away.team_id,
-            quarter=1,
-            clock_seconds=900,
-            home_score=0,
-            away_score=0,
-            possession_team_id=home.team_id,
-            down=1,
-            distance=10,
-            yard_line=25,
-            drive_index=1,
-            timeouts_home=3,
-            timeouts_away=3,
-        )
-
         def provider(state: GameSessionState, offense_team_id: str, defense_team_id: str) -> PlaycallRequest:
             if offense_team_id == self.user_team_id and self.pending_user_playcall:
                 return self.pending_user_playcall
-            return PlaycallRequest(
-                team_id=offense_team_id,
-                personnel="11",
-                formation="gun_trips" if state.distance >= 7 else "singleback",
-                offensive_concept="spacing" if state.distance >= 7 else "inside_zone",
-                defensive_concept="cover3_match",
-                tempo="normal",
-                aggression="balanced",
-                play_type=PlayType.PASS if state.distance >= 7 else PlayType.RUN,
-            )
+            return self.game_session.build_default_playcall(state, offense_team_id)
 
         session_result = self.game_session.run_game(initial_state, home, away, mode=mode, playcall_provider=provider)
 
@@ -460,6 +493,59 @@ class DynastyRuntime:
         if entry.is_user_game:
             self.last_user_game_result = session_result
         return session_result
+
+    def _validate_game_readiness(
+        self,
+        entry: ScheduleEntry,
+        home: Franchise,
+        away: Franchise,
+        initial_state: GameSessionState,
+    ) -> None:
+        try:
+            self.pre_sim_validator.validate_game_input(
+                season=self.org_state.season,
+                week=self.org_state.week,
+                game_id=entry.game_id,
+                home=home,
+                away=away,
+                session_state=initial_state,
+                random_source=self.rand,
+                coaching_policy_id="balanced_default",
+            )
+            report = self.pre_sim_validator.readiness_report(
+                season=self.org_state.season,
+                week=self.org_state.week,
+                game_id=entry.game_id,
+                home_team_id=home.team_id,
+                away_team_id=away.team_id,
+                issues=[],
+            )
+            self.store.save_validation_report(report, status="passed")
+        except ValidationError as exc:
+            report = self.pre_sim_validator.readiness_report(
+                season=self.org_state.season,
+                week=self.org_state.week,
+                game_id=entry.game_id,
+                home_team_id=home.team_id,
+                away_team_id=away.team_id,
+                issues=exc.issues,
+            )
+            self.store.save_validation_report(report, status="failed")
+            artifact = build_forensic_artifact(
+                engine_scope="runtime",
+                error_code="PRE_SIM_VALIDATION_FAILED",
+                message="game readiness validation failed",
+                state_snapshot={
+                    "season": self.org_state.season,
+                    "week": self.org_state.week,
+                    "phase": self.org_state.phase,
+                    "game_id": entry.game_id,
+                },
+                context={"issues": [asdict(i) for i in exc.issues]},
+                identifiers={"game_id": entry.game_id, "home": home.team_id, "away": away.team_id},
+                causal_fragment=["pre_sim_gate", "game_readiness"],
+            )
+            raise EngineIntegrityError(artifact) from exc
 
     def _run_offseason_gate(self) -> None:
         gate = self.org_engine.offseason_gate(self.org_state)

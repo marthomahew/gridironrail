@@ -359,6 +359,68 @@ class LeagueSnapshotRef:
 
 
 @dataclass(slots=True)
+class ValidationIssue:
+    code: str
+    severity: str
+    field_path: str
+    entity_id: str
+    message: str
+
+
+@dataclass(slots=True)
+class ValidationResult:
+    ok: bool
+    issues: list[ValidationIssue]
+
+
+class ValidationError(ValueError):
+    def __init__(self, issues: list[ValidationIssue]) -> None:
+        message = "; ".join(f"{i.code}:{i.entity_id}:{i.message}" for i in issues)
+        super().__init__(message)
+        self.issues = issues
+
+
+@dataclass(slots=True)
+class TraitCatalogEntry:
+    trait_code: str
+    dtype: str
+    min_value: float
+    max_value: float
+    required: bool
+    description: str
+    category: str
+    version: str
+
+
+@dataclass(slots=True)
+class PlayerTraitValue:
+    player_id: str
+    trait_code: str
+    value: float
+
+
+@dataclass(slots=True)
+class ResourceManifest:
+    resource_type: str
+    schema_version: str
+    resource_version: str
+    generated_at: str
+    checksum: str
+
+
+@dataclass(slots=True)
+class SimulationReadinessReport:
+    season: int
+    week: int
+    game_id: str
+    home_team_id: str
+    away_team_id: str
+    blocking_issues: list[ValidationIssue] = field(default_factory=list)
+    warning_issues: list[ValidationIssue] = field(default_factory=list)
+    validated_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass(slots=True)
 class ForensicArtifact:
     artifact_id: str
     timestamp: datetime

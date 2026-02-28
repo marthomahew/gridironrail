@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 import hashlib
 from typing import Callable
 
@@ -11,12 +11,18 @@ from grs.contracts import (
     ParameterizedIntent,
     PlayType,
     PlaycallRequest,
+    RandomSource,
     SimMode,
     Situation,
     SnapContextPackage,
+    ValidationError,
+    ValidationIssue,
 )
+from grs.core import EngineIntegrityError, build_forensic_artifact
 from grs.football.models import GameSessionResult, SnapResolution
+from grs.football.resources import ResourceResolver
 from grs.football.resolver import FootballEngine
+from grs.football.validation import PreSimValidator
 from grs.org.entities import Franchise
 
 PlaycallProvider = Callable[[GameSessionState, str, str], PlaycallRequest]
@@ -26,8 +32,20 @@ class GameSessionEngine:
     OFFENSE_SLOTS = ["QB1", "RB1", "WR1", "WR2", "WR3", "TE1", "LT", "LG", "C", "RG", "RT"]
     DEFENSE_SLOTS = ["DE1", "DT1", "DT2", "DE2", "LB1", "LB2", "LB3", "CB1", "CB2", "S1", "S2"]
 
-    def __init__(self, football_engine: FootballEngine) -> None:
+    def __init__(
+        self,
+        football_engine: FootballEngine,
+        *,
+        validator: PreSimValidator | None = None,
+        resource_resolver: ResourceResolver | None = None,
+        coaching_policy_id: str = "balanced_default",
+        random_source: RandomSource | None = None,
+    ) -> None:
         self._football_engine = football_engine
+        self._validator = validator or PreSimValidator()
+        self._resource_resolver = resource_resolver or ResourceResolver()
+        self._coaching_policy_id = coaching_policy_id
+        self._random_source = random_source
 
     def run_game(
         self,
@@ -43,6 +61,7 @@ class GameSessionEngine:
         action_stream: list[dict[str, str | int | float]] = []
         fatigue: dict[str, float] = {}
         overtime_possessions: set[str] = set()
+        player_lookup = {p.player_id: p for p in home.roster + away.roster}
 
         for snap_index in range(1, max_snaps + 1):
             if state.completed:
@@ -54,7 +73,16 @@ class GameSessionEngine:
             if playcall_provider:
                 call = playcall_provider(state, offense_team.team_id, defense_team.team_id)
             else:
-                call = self._default_playcall(state, offense_team.team_id)
+                call = self.build_default_playcall(state, offense_team.team_id)
+            try:
+                self._validator.validate_playcall(call)
+            except ValidationError as exc:
+                raise self._validation_hard_fail(
+                    game_id=state.game_id,
+                    play_id=f"{state.game_id}_P{snap_index:03d}",
+                    issues=exc.issues,
+                    phase="playcall_validation",
+                ) from exc
 
             participants = self._participants(offense_team, defense_team)
             in_game_states = self._in_game_states(participants, fatigue, state.active_injuries)
@@ -88,6 +116,15 @@ class GameSessionEngine:
                 ),
                 weather_flags=["clear"],
             )
+            try:
+                self._validator.validate_snap_context(scp, player_lookup=player_lookup)
+            except ValidationError as exc:
+                raise self._validation_hard_fail(
+                    game_id=state.game_id,
+                    play_id=scp.play_id,
+                    issues=exc.issues,
+                    phase="snap_validation",
+                ) from exc
 
             resolution = self._football_engine.run_mode_invariant(scp, mode)
             snaps.append(resolution)
@@ -140,16 +177,12 @@ class GameSessionEngine:
 
         for slot in slots:
             assn = assigned.get(slot)
-            if assn and assn.player_id in by_id:
-                p = by_id[assn.player_id]
-                actors.append(ActorRef(actor_id=p.player_id, team_id=team.team_id, role=p.position))
-
-        if len(actors) < 11:
-            remaining = [p for p in sorted(team.roster, key=lambda x: x.overall_truth, reverse=True) if p.player_id not in {a.actor_id for a in actors}]
-            for p in remaining:
-                actors.append(ActorRef(actor_id=p.player_id, team_id=team.team_id, role=p.position))
-                if len(actors) == 11:
-                    break
+            if assn is None:
+                raise ValueError(f"team {team.team_id} missing active depth slot '{slot}'")
+            if assn.player_id not in by_id:
+                raise ValueError(f"team {team.team_id} slot '{slot}' references unknown player '{assn.player_id}'")
+            p = by_id[assn.player_id]
+            actors.append(ActorRef(actor_id=p.player_id, team_id=team.team_id, role=p.position))
 
         if len(actors) != 11:
             raise ValueError(f"team {team.team_id} cannot field 11 players")
@@ -175,26 +208,56 @@ class GameSessionEngine:
             )
         return states
 
-    def _default_playcall(self, state: GameSessionState, offense_team_id: str) -> PlaycallRequest:
+    def build_default_playcall(self, state: GameSessionState, offense_team_id: str) -> PlaycallRequest:
+        policy = self._resource_resolver.resolve_policy(self._coaching_policy_id)
+        defaults = policy.get("defaults", {})
+        if not isinstance(defaults, dict):
+            raise ValueError(f"coaching policy '{self._coaching_policy_id}' defaults must be an object")
+
+        posture = "normal"
+        if state.down >= 3 and state.distance >= 7:
+            posture = "third_and_long"
+        elif state.distance <= 2:
+            posture = "short_yardage"
+        posture_cfg = defaults.get(posture)
+        if not isinstance(posture_cfg, dict):
+            raise ValueError(f"coaching policy '{self._coaching_policy_id}' missing posture '{posture}'")
+
         if state.down >= 3 and state.distance >= 7:
             play_type = PlayType.PASS
-            concept = "dagger"
+            personnel = self._required_policy_key(posture_cfg, "personnel")
+            formation = self._required_policy_key(posture_cfg, "formation_pass")
+            offense_concept = self._required_policy_key(posture_cfg, "offense_pass")
+            defense_concept = self._required_policy_key(posture_cfg, "defense_base")
         elif state.yard_line > 90 and state.down == 4:
             play_type = PlayType.FIELD_GOAL
-            concept = "field_goal_unit"
+            personnel = "field_goal"
+            formation = "field_goal_heavy"
+            offense_concept = "field_goal_unit"
+            defense_concept = "field_goal_block"
         elif state.down == 4:
             play_type = PlayType.PUNT
-            concept = "punt_safe"
+            personnel = "punt"
+            formation = "punt_spread"
+            offense_concept = "punt_safe"
+            defense_concept = "punt_return_safe"
         else:
             play_type = PlayType.RUN if state.distance <= 4 else PlayType.PASS
-            concept = "inside_zone" if play_type == PlayType.RUN else "spacing"
+            personnel = self._required_policy_key(posture_cfg, "personnel")
+            if play_type == PlayType.RUN:
+                formation = self._required_policy_key(posture_cfg, "formation_run")
+                offense_concept = self._required_policy_key(posture_cfg, "offense_run")
+            else:
+                formation = self._required_policy_key(posture_cfg, "formation_pass")
+                offense_concept = self._required_policy_key(posture_cfg, "offense_pass")
+            defense_concept = self._required_policy_key(posture_cfg, "defense_base")
 
         return PlaycallRequest(
             team_id=offense_team_id,
-            personnel="11",
-            formation="gun_trips" if play_type == PlayType.PASS else "singleback",
-            offensive_concept=concept,
-            defensive_concept="cover3_match",
+            personnel=personnel,
+            formation=formation,
+            offensive_concept=offense_concept,
+            defensive_concept=defense_concept,
             tempo="normal",
             aggression="balanced",
             play_type=play_type,
@@ -267,3 +330,28 @@ class GameSessionEngine:
             if injury_roll < 4:
                 actor_id = rep.actors[0].actor_id
                 state.active_injuries[actor_id] = "limited"
+
+    def _required_policy_key(self, posture_cfg: dict[str, str], key: str) -> str:
+        value = posture_cfg.get(key)
+        if not value:
+            raise ValueError(f"coaching policy '{self._coaching_policy_id}' missing key '{key}'")
+        return str(value)
+
+    def _validation_hard_fail(
+        self,
+        *,
+        game_id: str,
+        play_id: str,
+        issues: list[ValidationIssue],
+        phase: str,
+    ) -> EngineIntegrityError:
+        artifact = build_forensic_artifact(
+            engine_scope="football_session",
+            error_code="PRE_SIM_VALIDATION_FAILED",
+            message=f"{phase} failed",
+            state_snapshot={"game_id": game_id, "play_id": play_id, "issue_count": len(issues)},
+            context={"issues": [asdict(issue) for issue in issues], "phase": phase},
+            identifiers={"game_id": game_id, "play_id": play_id},
+            causal_fragment=["pre_sim_gate", phase],
+        )
+        return EngineIntegrityError(artifact)

@@ -1,0 +1,53 @@
+{
+  "manifest": {
+    "resource_type": "formation",
+    "schema_version": "1.0",
+    "resource_version": "1.0.0",
+    "generated_at": "2026-02-28T00:00:00Z",
+    "checksum": "ba2e218111b37b15a44fb2d3b98b86cd91656a4645cb5457774c78e7cc590c43"
+  },
+  "resources": [
+    {
+      "id": "gun_trips",
+      "name": "Gun Trips",
+      "phase": "offense",
+      "allowed_personnel": ["11", "12"],
+      "required_slots": ["QB1", "RB1", "WR1", "WR2", "WR3", "TE1", "LT", "LG", "C", "RG", "RT"]
+    },
+    {
+      "id": "singleback",
+      "name": "Singleback",
+      "phase": "offense",
+      "allowed_personnel": ["11", "12", "21"],
+      "required_slots": ["QB1", "RB1", "WR1", "WR2", "TE1", "LT", "LG", "C", "RG", "RT"]
+    },
+    {
+      "id": "punt_spread",
+      "name": "Punt Spread",
+      "phase": "special",
+      "allowed_personnel": ["punt"],
+      "required_slots": ["P"]
+    },
+    {
+      "id": "field_goal_heavy",
+      "name": "Field Goal Heavy",
+      "phase": "special",
+      "allowed_personnel": ["field_goal", "extra_point"],
+      "required_slots": ["K"]
+    },
+    {
+      "id": "kickoff_standard",
+      "name": "Kickoff Standard",
+      "phase": "special",
+      "allowed_personnel": ["kickoff"],
+      "required_slots": ["K"]
+    },
+    {
+      "id": "goal_line",
+      "name": "Goal Line",
+      "phase": "offense",
+      "allowed_personnel": ["12", "21"],
+      "required_slots": ["QB1", "RB1", "TE1", "LT", "LG", "C", "RG", "RT"]
+    }
+  ]
+}

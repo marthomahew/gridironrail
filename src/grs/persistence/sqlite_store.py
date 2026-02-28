@@ -13,7 +13,9 @@ from grs.contracts import (
     PlayResult,
     RepLedgerEntry,
     ScheduleEntry,
+    SimulationReadinessReport,
     TeamStanding,
+    TraitCatalogEntry,
 )
 from grs.football.models import GameSessionResult, SnapResolution
 from grs.org.entities import CapLedgerEntry, Franchise, TransactionRecord
@@ -65,6 +67,14 @@ class AuthoritativeStore:
                             player.morale,
                         ),
                     )
+                    conn.execute("DELETE FROM player_traits WHERE player_id = ?", (player.player_id,))
+                    conn.executemany(
+                        """
+                        INSERT INTO player_traits(player_id, trait_code, value)
+                        VALUES (?, ?, ?)
+                        """,
+                        [(player.player_id, code, value) for code, value in player.traits.items()],
+                    )
                 for staff in team.staff:
                     conn.execute(
                         """
@@ -99,6 +109,29 @@ class AuthoritativeStore:
                 VALUES (?, ?, ?, ?)
                 """,
                 (season, phase, week, json.dumps(metadata or {})),
+            )
+
+    def save_trait_catalog(self, catalog: Iterable[TraitCatalogEntry]) -> None:
+        with self.connect() as conn:
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO trait_catalog(
+                    trait_code, dtype, min_value, max_value, required, description, category, version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        entry.trait_code,
+                        entry.dtype,
+                        entry.min_value,
+                        entry.max_value,
+                        int(entry.required),
+                        entry.description,
+                        entry.category,
+                        entry.version,
+                    )
+                    for entry in catalog
+                ],
             )
 
     def save_contracts(self, contracts: Iterable[Any]) -> None:
@@ -407,6 +440,28 @@ class AuthoritativeStore:
             ],
         )
 
+    def save_validation_report(self, report: SimulationReadinessReport, status: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO simulation_validation_runs(
+                    season, week, game_id, home_team_id, away_team_id, status,
+                    blocking_issues_json, warning_issues_json, validated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    report.season,
+                    report.week,
+                    report.game_id,
+                    report.home_team_id,
+                    report.away_team_id,
+                    status,
+                    json.dumps([asdict(i) for i in report.blocking_issues]),
+                    json.dumps([asdict(i) for i in report.warning_issues]),
+                    report.validated_at.isoformat(),
+                ),
+            )
+
     def purge_non_retained_deep_logs(self, game_id: str) -> None:
         with self.connect() as conn:
             retained = conn.execute("SELECT retained FROM games WHERE game_id = ?", (game_id,)).fetchone()
@@ -465,6 +520,37 @@ class AuthoritativeStore:
             ).fetchone()[0]
             if orphan_game_state:
                 raise ValueError(f"integrity failure: {orphan_game_state} orphan game_state rows")
+
+            required_trait_count = conn.execute("SELECT COUNT(*) FROM trait_catalog WHERE required = 1").fetchone()[0]
+            if required_trait_count:
+                players_with_missing_traits = conn.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM (
+                        SELECT p.player_id, COUNT(pt.trait_code) AS trait_count
+                        FROM players p
+                        LEFT JOIN player_traits pt ON pt.player_id = p.player_id
+                        GROUP BY p.player_id
+                        HAVING trait_count < ?
+                    )
+                    """,
+                    (required_trait_count,),
+                ).fetchone()[0]
+                if players_with_missing_traits:
+                    raise ValueError(
+                        f"integrity failure: {players_with_missing_traits} players have incomplete trait vectors"
+                    )
+
+            out_of_range_traits = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM player_traits pt
+                JOIN trait_catalog tc ON tc.trait_code = pt.trait_code
+                WHERE pt.value < tc.min_value OR pt.value > tc.max_value
+                """
+            ).fetchone()[0]
+            if out_of_range_traits:
+                raise ValueError(f"integrity failure: {out_of_range_traits} traits are out of catalog range")
 
     def _insert_play_result(
         self,

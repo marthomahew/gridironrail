@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 from typing import Iterable
 
 from grs.contracts import (
@@ -16,6 +16,7 @@ from grs.contracts import (
     RepLedgerEntry,
     SimMode,
     SnapContextPackage,
+    ValidationError,
 )
 from grs.core import (
     EngineIntegrityError,
@@ -25,6 +26,7 @@ from grs.core import (
     now_utc,
 )
 from grs.football.models import SnapResolution
+from grs.football.validation import PreSimValidator
 
 
 class FootballResolver:
@@ -96,9 +98,27 @@ class FootballResolver:
     def _infer_teams(self, participants: Iterable[ActorRef], possession_team_id: str) -> tuple[str, str]:
         teams = sorted({p.team_id for p in participants})
         if possession_team_id not in teams:
-            teams.insert(0, possession_team_id)
-        if len(teams) == 1:
-            teams.append(f"opp_{teams[0]}")
+            artifact = build_forensic_artifact(
+                engine_scope="football",
+                error_code="POSSESSION_TEAM_NOT_ON_FIELD",
+                message="possession team not present among participants",
+                state_snapshot={"teams": teams, "possession_team_id": possession_team_id},
+                context={},
+                identifiers={"possession_team_id": possession_team_id},
+                causal_fragment=["participant_team_resolution"],
+            )
+            raise EngineIntegrityError(artifact)
+        if len(teams) != 2:
+            artifact = build_forensic_artifact(
+                engine_scope="football",
+                error_code="INVALID_TEAM_PARTITION",
+                message="snap must include exactly two teams",
+                state_snapshot={"teams": teams},
+                context={},
+                identifiers={"possession_team_id": possession_team_id},
+                causal_fragment=["participant_team_resolution"],
+            )
+            raise EngineIntegrityError(artifact)
         offense = possession_team_id
         defense = next(t for t in teams if t != offense)
         return offense, defense
@@ -372,8 +392,13 @@ class FootballResolver:
 
 
 class FootballEngine:
-    def __init__(self, resolver: FootballResolver | None = None) -> None:
+    def __init__(
+        self,
+        resolver: FootballResolver | None = None,
+        validator: PreSimValidator | None = None,
+    ) -> None:
         self._resolver = resolver or FootballResolver()
+        self._validator = validator or PreSimValidator()
 
     def run_snap(
         self,
@@ -383,6 +408,25 @@ class FootballEngine:
         force_target: str | None = None,
         max_attempts: int = 1000,
     ) -> SnapResolution:
+        try:
+            self._validator.validate_snap_context(scp)
+        except ValidationError as exc:
+            artifact = build_forensic_artifact(
+                engine_scope="football",
+                error_code="PRE_SIM_VALIDATION_FAILED",
+                message="snap context failed pre-sim validation",
+                state_snapshot={
+                    "play_id": scp.play_id,
+                    "game_id": scp.game_id,
+                    "mode": scp.mode.value,
+                    "issue_count": len(exc.issues),
+                },
+                context={"issues": [asdict(issue) for issue in exc.issues]},
+                identifiers={"game_id": scp.game_id, "play_id": scp.play_id},
+                causal_fragment=["pre_sim_gate"],
+            )
+            raise EngineIntegrityError(artifact) from exc
+
         if force_target and not dev_mode:
             raise ValueError("force_target is only available in dev mode")
 

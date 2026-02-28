@@ -68,6 +68,7 @@ class Player:
     injury_susceptibility_truth: float
     hidden_dev_curve: float
     morale: float = 0.5
+    traits: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

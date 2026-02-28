@@ -15,12 +15,12 @@ def test_engine_hard_stop_on_invalid_state():
         situation=Situation(1, 800, 1, 10, 25, "A", 0, 3, 3),
         participants=[],
         in_game_states={},
-        intent=ParameterizedIntent("11", "gun", "inside_zone", "cover3", play_type=PlayType.RUN),
+        intent=ParameterizedIntent("11", "gun_trips", "inside_zone", "cover3_match", play_type=PlayType.RUN),
     )
     engine = FootballEngine(FootballResolver(seeded_random(1)))
     with pytest.raises(EngineIntegrityError) as ex:
         engine.run_snap(scp)
-    assert ex.value.artifact.error_code == "INVALID_PARTICIPANTS"
+    assert ex.value.artifact.error_code == "PRE_SIM_VALIDATION_FAILED"
 
 
 def test_force_outcome_dev_mode():
@@ -35,7 +35,7 @@ def test_force_outcome_dev_mode():
         situation=Situation(2, 500, 2, 7, 50, "A", 0, 2, 2),
         participants=participants,
         in_game_states=states,
-        intent=ParameterizedIntent("11", "gun", "spacing", "cover2", play_type=PlayType.PASS),
+        intent=ParameterizedIntent("11", "gun_trips", "spacing", "cover2", play_type=PlayType.PASS),
     )
 
     engine = FootballEngine(FootballResolver(seeded_random(77)))
@@ -56,7 +56,7 @@ def test_force_outcome_not_available_without_dev_mode():
         situation=Situation(2, 500, 2, 7, 50, "A", 0, 2, 2),
         participants=participants,
         in_game_states=states,
-        intent=ParameterizedIntent("11", "gun", "spacing", "cover2", play_type=PlayType.PASS),
+        intent=ParameterizedIntent("11", "gun_trips", "spacing", "cover2", play_type=PlayType.PASS),
     )
     engine = FootballEngine(FootballResolver(seeded_random(77)))
     with pytest.raises(ValueError):
