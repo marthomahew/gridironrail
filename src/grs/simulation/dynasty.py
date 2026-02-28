@@ -429,19 +429,37 @@ class DynastyRuntime:
             if not self.last_user_game_result:
                 return ActionResult(request.request_id, True, "no user game played yet", data={})
             g = self.last_user_game_result
+            play_type_by_id: dict[str, str] = {}
+            for event in g.action_stream:
+                play_id = event.get("play_id")
+                play_type_value = event.get("play_type")
+                if isinstance(play_id, str) and isinstance(play_type_value, str):
+                    play_type_by_id[play_id] = play_type_value
             return ActionResult(
                 request.request_id,
                 True,
                 "latest user game",
                 data={
                     "state": asdict(g.final_state),
+                    "snap_count": len(g.snaps),
+                    "action_count": len(g.action_stream),
                     "snaps": [
                         {
                             "play_id": s.play_result.play_id,
+                            "play_type": play_type_by_id.get(s.play_result.play_id, "unknown"),
                             "yards": s.play_result.yards,
                             "event": s.causality_chain.terminal_event,
+                            "score_event": s.play_result.score_event,
+                            "turnover": s.play_result.turnover,
+                            "turnover_type": s.play_result.turnover_type,
+                            "penalty_count": len(s.play_result.penalties),
+                            "rep_count": len(s.rep_ledger),
+                            "contest_count": len(s.contest_outputs),
+                            "clock_delta": s.play_result.clock_delta,
+                            "conditioned": s.conditioned,
+                            "attempts": s.attempts,
                         }
-                        for s in g.snaps[-40:]
+                        for s in g.snaps[-80:]
                     ],
                 },
             )

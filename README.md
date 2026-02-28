@@ -10,6 +10,7 @@ python -m venv .venv
 pip install -e .[dev]
 pytest
 python -m grs.cli --weeks 2 --play-user-game
+python -m grs.ui_app
 ```
 
 ## Current status (implemented)
@@ -53,6 +54,18 @@ python -m grs.cli --weeks 2 --play-user-game
 - Expand phasal causality depth while preserving derivability and auditability
 - Continue hard-fail contract coverage for all sim-triggering action routes
 - Keep packaging-safe boundaries (PySide6-only, freeze-friendly resource loading)
+
+## Desktop executable (Windows)
+
+Build a packaged desktop app:
+
+```powershell
+pyinstaller --noconfirm --clean --name GRS-Desktop --windowed --paths src --collect-data grs --collect-submodules grs --collect-data matplotlib --hidden-import matplotlib.backends.backend_qtagg src/grs/ui_app.py
+```
+
+Output executable:
+
+- `dist/GRS-Desktop/GRS-Desktop.exe`
 
 ## North Star Docs
 

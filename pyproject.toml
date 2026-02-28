@@ -27,6 +27,7 @@ dev = [
 
 [project.scripts]
 grs = "grs.cli:main"
+grs-ui = "grs.ui_app:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
