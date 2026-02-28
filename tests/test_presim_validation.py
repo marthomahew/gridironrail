@@ -12,6 +12,7 @@ from grs.core import make_id
 from grs.football import PreSimValidator, ResourceResolver
 from grs.football.traits import canonical_trait_catalog, required_trait_codes
 from grs.simulation import DynastyRuntime
+from tests.helpers import bootstrap_profile
 
 
 def _resource_payload(name: str) -> dict:
@@ -31,6 +32,7 @@ def _active_player(team, slot: str):
 
 def test_pre_sim_rejects_missing_formation_id(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=101)
+    bootstrap_profile(runtime)
     result = runtime.handle_action(
         ActionRequest(
             make_id("req"),
@@ -53,6 +55,7 @@ def test_pre_sim_rejects_missing_formation_id(tmp_path: Path):
 
 def test_pre_sim_rejects_unresolvable_playbook_intent(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=1011)
+    bootstrap_profile(runtime)
     result = runtime.handle_action(
         ActionRequest(
             make_id("req"),
@@ -76,6 +79,8 @@ def test_pre_sim_rejects_unresolvable_playbook_intent(tmp_path: Path):
 
 def test_pre_sim_hard_fails_incomplete_depth_chart(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=102)
+    bootstrap_profile(runtime)
+    assert runtime.org_state is not None
     team = next(t for t in runtime.org_state.teams if t.team_id == "T01")
     team.depth_chart = [d for d in team.depth_chart if d.slot_role != "QB1"]
 
@@ -87,6 +92,8 @@ def test_pre_sim_hard_fails_incomplete_depth_chart(tmp_path: Path):
 
 def test_pre_sim_hard_fails_missing_trait(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=103)
+    bootstrap_profile(runtime)
+    assert runtime.org_state is not None
     team = next(t for t in runtime.org_state.teams if t.team_id == "T01")
     player = _active_player(team, "QB1")
     player.traits.pop("awareness", None)
@@ -99,6 +106,8 @@ def test_pre_sim_hard_fails_missing_trait(tmp_path: Path):
 
 def test_pre_sim_hard_fails_trait_out_of_range(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=104)
+    bootstrap_profile(runtime)
+    assert runtime.org_state is not None
     team = next(t for t in runtime.org_state.teams if t.team_id == "T01")
     player = _active_player(team, "QB1")
     player.traits["awareness"] = 200.0
@@ -111,6 +120,9 @@ def test_pre_sim_hard_fails_trait_out_of_range(tmp_path: Path):
 
 def test_no_fallback_when_depth_chart_invalid(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=105)
+    bootstrap_profile(runtime)
+    assert runtime.org_state is not None
+    assert runtime.store is not None
     team = next(t for t in runtime.org_state.teams if t.team_id == "T01")
     team.depth_chart = [d for d in team.depth_chart if d.slot_role != "WR1"]
 
@@ -178,6 +190,8 @@ def test_trait_influence_profile_rejects_unknown_trait_code():
 
 def test_active_players_have_complete_required_trait_vectors(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=106)
+    bootstrap_profile(runtime)
+    assert runtime.org_state is not None
     team = next(t for t in runtime.org_state.teams if t.team_id == "T01")
     active_ids = {d.player_id for d in team.depth_chart if d.active_flag}
     active_players = [p for p in team.roster if p.player_id in active_ids]
@@ -188,6 +202,8 @@ def test_active_players_have_complete_required_trait_vectors(tmp_path: Path):
 
 def test_batch_hard_fails_if_any_scheduled_game_invalid(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=107)
+    bootstrap_profile(runtime)
+    assert runtime.org_state is not None
     invalid_team = runtime.org_state.teams[2]
     invalid_team.depth_chart = [d for d in invalid_team.depth_chart if d.slot_role != "QB1"]
 

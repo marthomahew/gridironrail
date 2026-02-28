@@ -36,6 +36,11 @@ Completed and enforced now:
 6. Atomic trait persistence keyed by (`player_id`, `trait_code`) in authoritative SQLite.
 7. Validation audit persistence for simulation readiness runs.
 8. CI coverage for strict pre-sim rejection scenarios.
+9. Org-first franchise setup baseline:
+- profile picker flow (`create/load/delete`) and profile-scoped save roots
+- configurable league topology + schedule policy + cap/roster policy + talent profile
+- owner/gm/coach mode matrix with explicit capability overrides and audit events
+10. Runtime startup no longer auto-bootstraps a fixed league; simulation paths require loaded/created franchise profile.
 
 Still in-progress toward full North Star:
 

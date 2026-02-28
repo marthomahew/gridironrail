@@ -30,6 +30,15 @@ class Difficulty(str, Enum):
 
 
 class ActionType(str, Enum):
+    LIST_PROFILES = "list_profiles"
+    CREATE_PROFILE = "create_profile"
+    LOAD_PROFILE = "load_profile"
+    DELETE_PROFILE = "delete_profile"
+    VALIDATE_LEAGUE_SETUP = "validate_league_setup"
+    CREATE_NEW_FRANCHISE_SAVE = "create_new_franchise_save"
+    SET_ACTIVE_MODE = "set_active_mode"
+    SET_CAPABILITY_OVERRIDE = "set_capability_override"
+    GET_ORG_DASHBOARD = "get_org_dashboard"
     ADVANCE_WEEK = "advance_week"
     PLAY_USER_GAME = "play_user_game"
     PLAY_SNAP = "play_snap"
@@ -61,6 +70,25 @@ class CalibrationTraitProfile(str, Enum):
     UNIFORM_50 = "uniform_50"
     NARROW_45_55 = "narrow_45_55"
     BAND_40_60 = "band_40_60"
+
+
+class ManagementMode(str, Enum):
+    OWNER = "owner"
+    GM = "gm"
+    COACH = "coach"
+
+
+class CapabilityDomain(str, Enum):
+    FINANCE = "finance"
+    CONTRACTS = "contracts"
+    TRADES = "trades"
+    DRAFT = "draft"
+    FA = "fa"
+    STAFFING = "staffing"
+    DEPTH_CHART = "depth_chart"
+    GAMEPLAN = "gameplan"
+    PLAYCALL_OVERRIDE = "playcall_override"
+    OWNER_POLICY = "owner_policy"
 
 
 class RandomSource(Protocol):
@@ -379,6 +407,80 @@ class LeagueSnapshotRef:
     week: int
     created_at: datetime
     blob_path: str
+
+
+@dataclass(slots=True)
+class CapPolicyConfig:
+    cap_amount: int
+    dead_money_penalty_multiplier: float = 1.0
+
+
+@dataclass(slots=True)
+class RosterPolicyConfig:
+    players_per_team: int
+    active_gameday_min: int = 22
+    active_gameday_max: int = 53
+
+
+@dataclass(slots=True)
+class SchedulePolicyConfig:
+    policy_id: str
+    regular_season_weeks: int = 18
+
+
+@dataclass(slots=True)
+class TalentProfileConfig:
+    profile_id: str
+    description: str
+    parameters: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class CapabilityPolicy:
+    mode: ManagementMode
+    baseline_capabilities: list[CapabilityDomain]
+    override_capabilities: dict[CapabilityDomain, bool] = field(default_factory=dict)
+    updated_by_team_id: str = ""
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+    reason: str = ""
+
+
+@dataclass(slots=True)
+class LeagueSetupConfig:
+    conference_count: int
+    divisions_per_conference: list[int]
+    teams_per_division: list[list[int]]
+    roster_policy: RosterPolicyConfig
+    cap_policy: CapPolicyConfig
+    schedule_policy: SchedulePolicyConfig
+    ruleset_id: str
+    difficulty_profile_id: str
+    talent_profile_id: str
+    user_mode: ManagementMode
+    capability_overrides: dict[CapabilityDomain, bool] = field(default_factory=dict)
+    league_format_id: str = "custom_flexible_v1"
+    league_format_version: str = "1.0.0"
+
+
+@dataclass(slots=True)
+class FranchiseProfile:
+    profile_id: str
+    profile_name: str
+    created_at: datetime
+    last_opened_at: datetime
+    league_config_ref: str
+    selected_user_team_id: str
+    active_mode: ManagementMode
+
+
+@dataclass(slots=True)
+class LeagueSetupValidationReport:
+    report_id: str
+    profile_id: str
+    setup_config_ref: str
+    blocking_issues: list[ValidationIssue]
+    warning_issues: list[ValidationIssue]
+    validated_at: datetime
 
 
 @dataclass(slots=True)

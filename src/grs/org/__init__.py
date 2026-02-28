@@ -16,6 +16,19 @@ from .entities import (
     TransactionRecord,
 )
 from .schedule import StandingRank, generate_season_schedule, rank_standings
+from .setup import (
+    CapabilityEnforcementService,
+    LEAGUE_LIMITS,
+    SCHEDULE_POLICIES,
+    TALENT_PROFILES,
+    LeagueSetupValidator,
+    LeagueStructureCompiler,
+    RosterGenerationService,
+    ScheduleGenerationService,
+    TeamBlueprint,
+    TeamSelectionPlanner,
+    build_league_from_setup,
+)
 
 __all__ = [
     "CapLedgerEntry",
@@ -29,12 +42,23 @@ __all__ = [
     "Owner",
     "Player",
     "Prospect",
+    "CapabilityEnforcementService",
+    "LEAGUE_LIMITS",
+    "SCHEDULE_POLICIES",
+    "TALENT_PROFILES",
+    "LeagueSetupValidator",
+    "LeagueStructureCompiler",
+    "RosterGenerationService",
+    "ScheduleGenerationService",
     "StaffMember",
     "StandingRank",
+    "TeamBlueprint",
+    "TeamSelectionPlanner",
     "TeamIdentityProfile",
     "TradeRecord",
     "TransactionRecord",
     "build_default_league",
+    "build_league_from_setup",
     "generate_season_schedule",
     "rank_standings",
 ]

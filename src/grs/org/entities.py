@@ -86,6 +86,8 @@ class Franchise:
     name: str
     owner: Owner
     identity: TeamIdentityProfile
+    conference_id: str = ""
+    division_id: str = ""
     staff: list[StaffMember] = field(default_factory=list)
     roster: list[Player] = field(default_factory=list)
     depth_chart: list[DepthChartAssignment] = field(default_factory=list)

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import json
 
-from grs.contracts import ActionRequest
+from grs.contracts import ActionRequest, ActionType
 from grs.core import make_id
 from grs.simulation.dynasty import DynastyRuntime
 
@@ -38,6 +38,8 @@ class ReplayHarness:
     def replay(self, root: Path) -> tuple[dict, dict]:
         runtime_a = DynastyRuntime(root=root / "replay_a", seed=self.seed)
         runtime_b = DynastyRuntime(root=root / "replay_b", seed=self.seed)
+        self._bootstrap_runtime(runtime_a)
+        self._bootstrap_runtime(runtime_b)
 
         for action in self.actions:
             runtime_a.handle_action(ActionRequest(make_id("req"), action.action_type, action.payload, action.actor_team_id))
@@ -48,6 +50,8 @@ class ReplayHarness:
         return summary_a, summary_b
 
     def _fingerprint(self, runtime: DynastyRuntime) -> dict:
+        if runtime.org_state is None or runtime.store is None:
+            raise RuntimeError("replay runtime has no loaded profile state")
         standings_week = runtime.org_state.week - 1
         if standings_week < 1:
             standings_week = 1
@@ -58,3 +62,43 @@ class ReplayHarness:
             "standings": rows,
             "last_user_game": runtime.last_user_game_result.final_state.game_id if runtime.last_user_game_result else None,
         }
+
+    def _bootstrap_runtime(self, runtime: DynastyRuntime) -> None:
+        setup = {
+            "conference_count": 2,
+            "divisions_per_conference": [2, 2],
+            "teams_per_division": [[2, 2], [2, 2]],
+            "roster_policy": {"players_per_team": 53, "active_gameday_min": 22, "active_gameday_max": 53},
+            "cap_policy": {"cap_amount": 255_000_000, "dead_money_penalty_multiplier": 1.0},
+            "schedule_policy": {"policy_id": "balanced_round_robin", "regular_season_weeks": 18},
+            "ruleset_id": "nfl_standard_v1",
+            "difficulty_profile_id": "pro",
+            "talent_profile_id": "balanced_mid",
+            "user_mode": "owner",
+            "capability_overrides": {},
+            "league_format_id": "custom_flexible_v1",
+            "league_format_version": "1.0.0",
+        }
+        runtime.handle_action(
+            ActionRequest(
+                make_id("req"),
+                ActionType.CREATE_PROFILE,
+                {"profile_id": "replay_profile", "profile_name": "Replay Profile"},
+                "T01",
+            )
+        )
+        result = runtime.handle_action(
+            ActionRequest(
+                make_id("req"),
+                ActionType.CREATE_NEW_FRANCHISE_SAVE,
+                {
+                    "profile_id": "replay_profile",
+                    "profile_name": "Replay Profile",
+                    "selected_user_team_id": "T01",
+                    "setup": setup,
+                },
+                "T01",
+            )
+        )
+        if not result.success:
+            raise RuntimeError(f"replay bootstrap failed: {result.message}")

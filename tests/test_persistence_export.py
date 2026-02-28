@@ -8,6 +8,7 @@ import duckdb
 from grs.contracts import ActionRequest, ActionType
 from grs.core import make_id
 from grs.simulation import DynastyRuntime
+from tests.helpers import bootstrap_profile
 
 
 def _count(conn: sqlite3.Connection, query: str, params: tuple = ()) -> int:
@@ -16,6 +17,7 @@ def _count(conn: sqlite3.Connection, query: str, params: tuple = ()) -> int:
 
 def test_full_week_execution_finalizes_all_games_and_no_orphans(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=7)
+    bootstrap_profile(runtime)
     res = runtime.handle_action(ActionRequest(make_id("req"), ActionType.ADVANCE_WEEK, {}, "T01"))
     assert res.success
 
@@ -39,6 +41,7 @@ def test_full_week_execution_finalizes_all_games_and_no_orphans(tmp_path: Path):
 
 def test_retention_policy_keeps_retained_and_purges_non_retained(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=8)
+    bootstrap_profile(runtime)
     runtime.handle_action(ActionRequest(make_id("req"), ActionType.ADVANCE_WEEK, {}, "T01"))
 
     with sqlite3.connect(runtime.paths.sqlite_path) as conn:
@@ -65,6 +68,7 @@ def test_retention_policy_keeps_retained_and_purges_non_retained(tmp_path: Path)
 
 def test_export_csv_parquet_row_count_parity(tmp_path: Path):
     runtime = DynastyRuntime(root=tmp_path, seed=11)
+    bootstrap_profile(runtime)
     runtime.handle_action(ActionRequest(make_id("req"), ActionType.ADVANCE_WEEK, {}, "T01"))
 
     outputs = runtime.export()

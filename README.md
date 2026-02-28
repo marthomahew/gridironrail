@@ -15,7 +15,14 @@ python -m grs.ui_app
 
 ## Current status (implemented)
 
-- Full weekly slate simulation (8-team league, 18-week schedule)
+- Profile-first startup flow (`New Franchise` / `Load Franchise`) for UI and runtime actions
+- New franchise setup with configurable topology:
+- conferences/divisions/teams-per-division
+- user-defined players-per-team and cap baseline
+- schedule policy selection (`balanced_round_robin` / `division_weighted`)
+- talent profile selection (`balanced_mid` / `narrow_parity` / `top_heavy` / `rebuild_chaos`)
+- Owner/GM/Coach mode matrix with capability overrides and audit-stamped changes
+- Flexible schedule generator with odd-team bye support and uneven-group handling
 - Multi-snap game sessions (clock/quarter/drive/possession transitions)
 - One football resolver path across `play`, `sim`, and `off-screen` modes
 - Strict pre-sim validation gate with hard-fail + forensic artifact on invalid inputs

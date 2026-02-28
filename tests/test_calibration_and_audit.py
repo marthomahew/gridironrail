@@ -12,6 +12,7 @@ from grs.football import FootballContractAuditor, ResourceResolver
 from grs.football.calibration import CalibrationService
 from grs.football.session import GameSessionEngine
 from grs.simulation import DynastyRuntime
+from tests.helpers import bootstrap_profile
 
 
 def test_football_contract_audit_matrix_runs() -> None:
@@ -40,6 +41,8 @@ def test_runtime_dev_actions_blocked_without_dev_mode(tmp_path: Path) -> None:
 
 def test_runtime_dev_calibration_action_with_audit_stamp(tmp_path: Path) -> None:
     runtime = DynastyRuntime(root=tmp_path, seed=8, dev_mode=True)
+    bootstrap_profile(runtime)
+    assert runtime.store is not None
 
     profiles = runtime.handle_action(ActionRequest(make_id("req"), ActionType.GET_TUNING_PROFILES, {}, "T01"))
     assert profiles.success
@@ -62,7 +65,7 @@ def test_runtime_dev_calibration_action_with_audit_stamp(tmp_path: Path) -> None
     assert batch.success
     assert batch.data["sample_count"] == 50
     assert batch.data["trait_profile"] == "uniform_50"
-    assert (tmp_path / "data" / "analytics.duckdb").exists()
+    assert (tmp_path / "data" / "profiles" / "profile_test" / "analytics.duckdb").exists()
 
     audit = runtime.handle_action(ActionRequest(make_id("req"), ActionType.RUN_FOOTBALL_AUDIT, {}, "T01"))
     assert audit.success

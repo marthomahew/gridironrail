@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date
 import math
 
-from grs.contracts import LeagueSnapshotRef, NarrativeEvent, ScheduleEntry, TeamStanding
+from grs.contracts import CapabilityPolicy, LeagueSnapshotRef, NarrativeEvent, ScheduleEntry, TeamStanding
 from grs.core import make_id, now_utc
 from grs.football.traits import generate_player_traits
 from grs.org.entities import (
@@ -29,6 +29,15 @@ class LeagueState:
     week: int
     phase: str
     teams: list[Franchise]
+    profile_id: str = ""
+    league_config_id: str = ""
+    league_format_id: str = "custom_flexible_v1"
+    league_format_version: str = "1.0.0"
+    ruleset_id: str = "nfl_standard_v1"
+    ruleset_version: str = "1.0.0"
+    schedule_policy_id: str = "balanced_round_robin"
+    schedule_policy_version: str = "1.0.0"
+    capability_policy: CapabilityPolicy | None = None
     standings: LeagueStandingBook = field(default_factory=LeagueStandingBook)
     schedule: list[ScheduleEntry] = field(default_factory=list)
     snapshots: list[LeagueSnapshotRef] = field(default_factory=list)
@@ -41,22 +50,32 @@ class LeagueState:
 
 
 class OrganizationalEngine:
-    def __init__(self, rand, difficulty) -> None:
+    def __init__(
+        self,
+        rand,
+        difficulty,
+        regular_season_weeks: int = 18,
+        postseason_weeks: int = 4,
+        offseason_weeks: int = 12,
+    ) -> None:
         self._rand = rand
         self._difficulty = difficulty
+        self._regular_season_weeks = regular_season_weeks
+        self._postseason_weeks = postseason_weeks
+        self._offseason_weeks = offseason_weeks
 
     def current_week(self, state: LeagueState) -> LeagueWeek:
         return LeagueWeek(season=state.season, week=state.week, phase=state.phase)
 
     def advance_week(self, state: LeagueState) -> None:
         state.week += 1
-        if state.phase == "regular" and state.week > 18:
+        if state.phase == "regular" and state.week > self._regular_season_weeks:
             state.phase = "postseason"
             state.week = 1
-        elif state.phase == "postseason" and state.week > 4:
+        elif state.phase == "postseason" and state.week > self._postseason_weeks:
             state.phase = "offseason"
             state.week = 1
-        elif state.phase == "offseason" and state.week > 12:
+        elif state.phase == "offseason" and state.week > self._offseason_weeks:
             state.phase = "regular"
             state.week = 1
             state.season += 1

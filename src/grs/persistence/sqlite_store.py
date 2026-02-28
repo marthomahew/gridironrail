@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import asdict
+from datetime import date
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -19,6 +20,16 @@ from grs.contracts import (
 )
 from grs.football.models import GameSessionResult, SnapResolution
 from grs.org.entities import CapLedgerEntry, Franchise, TransactionRecord
+from grs.org.engine import LeagueState
+from grs.org.entities import (
+    Contract,
+    ContractYear,
+    LeagueStandingBook,
+    Owner,
+    Player,
+    StaffMember,
+    TeamIdentityProfile,
+)
 from grs.persistence.migrations import MigrationRunner
 
 
@@ -110,6 +121,230 @@ class AuthoritativeStore:
                 """,
                 (season, phase, week, json.dumps(metadata or {})),
             )
+
+    def load_runtime_league_state(self) -> LeagueState | None:
+        with self.connect() as conn:
+            season_row = conn.execute(
+                "SELECT season, phase, current_week, metadata_json FROM season_state ORDER BY season DESC LIMIT 1"
+            ).fetchone()
+            if season_row is None:
+                return None
+
+            season = int(season_row[0])
+            phase = str(season_row[1])
+            week = int(season_row[2])
+            metadata = json.loads(season_row[3]) if season_row[3] else {}
+
+            team_rows = conn.execute(
+                "SELECT team_id, name, owner_name, cap_space, mandate FROM teams ORDER BY team_id"
+            ).fetchall()
+            teams: list[Franchise] = []
+            for team_id, team_name, owner_name, cap_space, mandate in team_rows:
+                owner = Owner(
+                    owner_id=f"OWN_{team_id}",
+                    name=str(owner_name),
+                    risk_tolerance=0.5,
+                    patience=0.5,
+                    spending_aggressiveness=0.5,
+                    mandate=str(mandate),
+                )
+                roster_rows = conn.execute(
+                    """
+                    SELECT player_id, team_id, name, position, age, overall_truth, volatility_truth,
+                           injury_susceptibility_truth, hidden_dev_curve, morale
+                    FROM players
+                    WHERE team_id = ?
+                    ORDER BY player_id
+                    """,
+                    (team_id,),
+                ).fetchall()
+                roster: list[Player] = []
+                for row in roster_rows:
+                    trait_rows = conn.execute(
+                        "SELECT trait_code, value FROM player_traits WHERE player_id = ?",
+                        (row[0],),
+                    ).fetchall()
+                    roster.append(
+                        Player(
+                            player_id=str(row[0]),
+                            team_id=str(row[1]),
+                            name=str(row[2]),
+                            position=str(row[3]),
+                            age=int(row[4]),
+                            overall_truth=float(row[5]),
+                            volatility_truth=float(row[6]),
+                            injury_susceptibility_truth=float(row[7]),
+                            hidden_dev_curve=float(row[8]),
+                            morale=float(row[9]),
+                            traits={str(code): float(value) for code, value in trait_rows},
+                        )
+                    )
+
+                staff_rows = conn.execute(
+                    """
+                    SELECT staff_id, name, role, evaluation, development, discipline, adaptability
+                    FROM staff
+                    WHERE team_id = ?
+                    ORDER BY staff_id
+                    """,
+                    (team_id,),
+                ).fetchall()
+                staff: list[StaffMember] = [
+                    StaffMember(
+                        staff_id=str(row[0]),
+                        name=str(row[1]),
+                        role=str(row[2]),
+                        evaluation=float(row[3]),
+                        development=float(row[4]),
+                        discipline=float(row[5]),
+                        adaptability=float(row[6]),
+                    )
+                    for row in staff_rows
+                ]
+
+                depth_rows = conn.execute(
+                    """
+                    SELECT team_id, player_id, slot_role, priority, active_flag
+                    FROM depth_chart
+                    WHERE team_id = ?
+                    ORDER BY slot_role, priority
+                    """,
+                    (team_id,),
+                ).fetchall()
+                from grs.contracts import DepthChartAssignment
+
+                depth_chart = [
+                    DepthChartAssignment(
+                        team_id=str(row[0]),
+                        player_id=str(row[1]),
+                        slot_role=str(row[2]),
+                        priority=int(row[3]),
+                        active_flag=bool(row[4]),
+                    )
+                    for row in depth_rows
+                ]
+
+                teams.append(
+                    Franchise(
+                        team_id=str(team_id),
+                        name=str(team_name),
+                        owner=owner,
+                        identity=TeamIdentityProfile(
+                            scheme_offense="multiple",
+                            scheme_defense="hybrid",
+                            roster_strategy="balanced",
+                            risk_posture="moderate",
+                        ),
+                        staff=staff,
+                        roster=roster,
+                        depth_chart=depth_chart,
+                        cap_space=int(cap_space),
+                        coaching_policy_id="balanced_base",
+                        rules_profile_id=str(metadata.get("ruleset_id", "nfl_standard_v1")),
+                    )
+                )
+
+            standings_book = LeagueStandingBook()
+            standings_rows = conn.execute(
+                """
+                SELECT team_id, wins, losses, ties, points_for, points_against
+                FROM standings_history
+                WHERE season = ? AND week = ?
+                """,
+                (season, week),
+            ).fetchall()
+            if standings_rows:
+                from grs.contracts import TeamStanding
+
+                for row in standings_rows:
+                    standings_book.entries[str(row[0])] = TeamStanding(
+                        team_id=str(row[0]),
+                        wins=int(row[1]),
+                        losses=int(row[2]),
+                        ties=int(row[3]),
+                        points_for=int(row[4]),
+                        points_against=int(row[5]),
+                    )
+            else:
+                for team in teams:
+                    standings_book.ensure_team(team.team_id)
+
+            schedule_rows = conn.execute(
+                """
+                SELECT game_id, season, week, home_team_id, away_team_id, status, is_user_game
+                FROM schedule
+                WHERE season = ?
+                ORDER BY week, game_id
+                """,
+                (season,),
+            ).fetchall()
+            schedule = [
+                ScheduleEntry(
+                    game_id=str(row[0]),
+                    season=int(row[1]),
+                    week=int(row[2]),
+                    home_team_id=str(row[3]),
+                    away_team_id=str(row[4]),
+                    status=str(row[5]),
+                    is_user_game=bool(row[6]),
+                )
+                for row in schedule_rows
+            ]
+
+            tx_rows = conn.execute(
+                """
+                SELECT tx_id, season, week, tx_type, summary, team_id, context_json
+                FROM transactions
+                WHERE season = ?
+                ORDER BY week, tx_id
+                """,
+                (season,),
+            ).fetchall()
+            transactions = [
+                TransactionRecord(
+                    tx_id=str(row[0]),
+                    season=int(row[1]),
+                    week=int(row[2]),
+                    tx_type=str(row[3]),
+                    summary=str(row[4]),
+                    team_id=str(row[5]),
+                    causality_context=dict(json.loads(row[6])) if row[6] else {},
+                )
+                for row in tx_rows
+            ]
+
+            contract_rows = conn.execute(
+                "SELECT contract_id, player_id, team_id, signed_date, years_json FROM contracts"
+            ).fetchall()
+            contracts = [
+                Contract(
+                    contract_id=str(row[0]),
+                    player_id=str(row[1]),
+                    team_id=str(row[2]),
+                    signed_date=date.fromisoformat(str(row[3])),
+                    years=[ContractYear(**dict(item)) for item in json.loads(row[4])],
+                )
+                for row in contract_rows
+            ]
+
+        return LeagueState(
+            season=season,
+            week=week,
+            phase=phase,
+            teams=teams,
+            profile_id=str(metadata.get("profile_id", "")),
+            league_config_id=str(metadata.get("league_config_id", "")),
+            league_format_id=str(metadata.get("league_format_id", "custom_flexible_v1")),
+            league_format_version=str(metadata.get("league_format_version", "1.0.0")),
+            ruleset_id=str(metadata.get("ruleset_id", "nfl_standard_v1")),
+            ruleset_version=str(metadata.get("ruleset_version", "1.0.0")),
+            schedule_policy_id=str(metadata.get("schedule_policy_id", "balanced_round_robin")),
+            schedule_policy_version=str(metadata.get("schedule_policy_version", "1.0.0")),
+            standings=standings_book,
+            schedule=schedule,
+            transactions=transactions,
+            contracts=contracts,
+        )
 
     def save_trait_catalog(self, catalog: Iterable[TraitCatalogEntry]) -> None:
         with self.connect() as conn:

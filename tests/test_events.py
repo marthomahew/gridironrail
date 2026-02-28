@@ -3,10 +3,13 @@ from __future__ import annotations
 from grs.contracts import ActionRequest, ActionType
 from grs.core import make_id
 from grs.simulation import DynastyRuntime
+from tests.helpers import bootstrap_profile
 
 
 def test_narrative_events_emitted_across_layers(tmp_path):
     runtime = DynastyRuntime(root=tmp_path, seed=123)
+    bootstrap_profile(runtime)
+    assert runtime.store is not None
 
     runtime.handle_action(ActionRequest(make_id("req"), ActionType.ADVANCE_WEEK, {}, "T01"))
 
