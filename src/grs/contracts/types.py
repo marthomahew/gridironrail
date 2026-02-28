@@ -43,11 +43,21 @@ class ActionType(str, Enum):
     GET_FILM_ROOM_GAME = "get_film_room_game"
     GET_ANALYTICS_SERIES = "get_analytics_series"
     SET_PLAYCALL = "set_playcall"
+    RUN_CALIBRATION_BATCH = "run_calibration_batch"
+    SET_TUNING_PROFILE = "set_tuning_profile"
+    GET_TUNING_PROFILES = "get_tuning_profiles"
+    RUN_FOOTBALL_AUDIT = "run_football_audit"
 
 
 class TraitStatus(str, Enum):
     CORE_NOW = "core_now"
     RESERVED_PHASAL = "reserved_phasal"
+
+
+class CalibrationTraitProfile(str, Enum):
+    UNIFORM_50 = "uniform_50"
+    NARROW_45_55 = "narrow_45_55"
+    BAND_40_60 = "band_40_60"
 
 
 class RandomSource(Protocol):
@@ -693,6 +703,60 @@ class TeamGamePackage:
     perceived_inputs: dict[str, float]
     coaching_policy_id: str
     default_rules_profile_id: str = "nfl_placeholder_v1"
+
+
+@dataclass(slots=True)
+class TuningProfile:
+    profile_id: str
+    description: str
+    family_weight_multipliers: dict[str, float] = field(default_factory=dict)
+    outcome_multipliers: dict[str, float] = field(default_factory=dict)
+    dev_only: bool = True
+
+
+@dataclass(slots=True)
+class CalibrationRunRequest:
+    play_type: PlayType
+    sample_count: int
+    trait_profile: CalibrationTraitProfile
+    seed: int | None = None
+    tuning_profile_id: str = "neutral"
+
+
+@dataclass(slots=True)
+class CalibrationRunResult:
+    run_id: str
+    play_type: PlayType
+    sample_count: int
+    trait_profile: CalibrationTraitProfile
+    tuning_profile_id: str
+    mean_yards: float
+    turnover_rate: float
+    score_rate: float
+    penalty_rate: float
+    terminal_distribution: dict[str, int] = field(default_factory=dict)
+    seed: int | None = None
+
+
+@dataclass(slots=True)
+class ContractAuditCheck:
+    check_id: str
+    description: str
+    passed: bool
+    evidence: str
+    severity: str = "blocking"
+
+
+@dataclass(slots=True)
+class ContractAuditReport:
+    report_id: str
+    generated_at: datetime
+    scope: str
+    checks: list[ContractAuditCheck]
+
+    @property
+    def passed(self) -> bool:
+        return all(c.passed for c in self.checks)
 
 
 class RegistryRepository(Protocol):

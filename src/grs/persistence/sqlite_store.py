@@ -423,13 +423,11 @@ class AuthoritativeStore:
             )
 
     def save_narrative_events(self, events: Iterable[NarrativeEvent], conn: sqlite3.Connection | None = None) -> None:
-        close_conn = False
         if conn is None:
-            conn = self.connect()
-            close_conn = True
+            with self.connect() as managed_conn:
+                self._save_narrative_events_conn(managed_conn, events)
+            return
         self._save_narrative_events_conn(conn, events)
-        if close_conn:
-            conn.close()
 
     def _save_narrative_events_conn(self, conn: sqlite3.Connection, events: Iterable[NarrativeEvent]) -> None:
         conn.executemany(

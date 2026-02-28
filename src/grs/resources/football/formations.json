@@ -4,7 +4,7 @@
     "schema_version": "1.0",
     "resource_version": "1.0.0",
     "generated_at": "2026-02-28T00:00:00Z",
-    "checksum": "ba2e218111b37b15a44fb2d3b98b86cd91656a4645cb5457774c78e7cc590c43"
+    "checksum": "86ebd1551f65906a9e13818cab2256557add4c544d105cb9db0c252d049df78c"
   },
   "resources": [
     {
@@ -13,7 +13,8 @@
       "phase": "offense",
       "allowed_personnel": [
         "11",
-        "12"
+        "12",
+        "two_point"
       ],
       "required_slots": [
         "QB1",

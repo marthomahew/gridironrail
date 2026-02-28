@@ -9,9 +9,12 @@ from grs.contracts import (
     ActionRequest,
     ActionResult,
     ActionType,
+    CalibrationRunRequest,
+    CalibrationTraitProfile,
     Difficulty,
     GameSessionState,
     LeagueSnapshotRef,
+    NarrativeEvent,
     PlayType,
     PlaycallRequest,
     RetentionPolicy,
@@ -33,13 +36,16 @@ from grs.core import (
 )
 from grs.export import ExportService
 from grs.football import (
+    CalibrationService,
     FootballEngine,
-    PolicyDrivenCoachDecisionEngine,
     FootballResolver,
     GameSessionEngine,
     GameSessionResult,
+    PolicyDrivenCoachDecisionEngine,
     PreSimValidator,
     ResourceResolver,
+    calibration_result_to_dict,
+    run_football_contract_audit,
 )
 from grs.org import LeagueState, OrganizationalEngine, build_default_league, generate_season_schedule, rank_standings
 from grs.org.entities import Franchise
@@ -78,6 +84,7 @@ class DynastyRuntime:
         difficulty: Difficulty = Difficulty.PRO,
         seed: int | None = None,
         user_team_id: str = "T01",
+        dev_mode: bool = False,
     ) -> None:
         self.paths = RuntimePaths(root)
         self.paths.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
@@ -86,6 +93,7 @@ class DynastyRuntime:
         profiles = default_difficulty_profiles()
         self.difficulty = profiles[difficulty]
         self.seed = seed
+        self.dev_mode = dev_mode
 
         self.rand = seeded_random(seed) if seed is not None else gameplay_random()
         self.event_bus = EventBus()
@@ -113,6 +121,8 @@ class DynastyRuntime:
             random_source=self.rand.spawn("session"),
         )
         self.retention_policy = RetentionPolicy()
+        self.calibration = CalibrationService(base_resolver=self.resource_resolver)
+        self.active_tuning_profile_id = "neutral"
 
         self.halted = False
         self.last_forensic_path: str | None = None
@@ -199,19 +209,89 @@ class DynastyRuntime:
                 )
             return ActionResult(request.request_id, True, "playcall updated", data=asdict(self.pending_user_playcall))
 
-        if action in {ActionType.PLAY_USER_GAME, ActionType.PLAY_SNAP, ActionType.SIM_DRIVE}:
-            result = self._simulate_user_game(mode=SimMode.PLAY if action != ActionType.SIM_DRIVE else SimMode.SIM)
+        if action == ActionType.GET_TUNING_PROFILES:
+            if not self.dev_mode:
+                return ActionResult(request.request_id, False, "dev mode required for tuning actions")
+            profiles = [asdict(p) for p in self.calibration.list_tuning_profiles()]
+            return ActionResult(request.request_id, True, "tuning profiles", data={"profiles": profiles, "active_profile_id": self.active_tuning_profile_id})
+
+        if action == ActionType.SET_TUNING_PROFILE:
+            if not self.dev_mode:
+                return ActionResult(request.request_id, False, "dev mode required for tuning actions")
+            profile_id = str(request.payload.get("profile_id", ""))
+            profile_ids = {p.profile_id for p in self.calibration.list_tuning_profiles()}
+            if profile_id not in profile_ids:
+                return ActionResult(request.request_id, False, f"unknown tuning profile '{profile_id}'")
+            self.active_tuning_profile_id = profile_id
+            self._emit_dev_event(
+                event_type="tuning_profile_set",
+                claims=[f"active tuning profile set to {profile_id}"],
+                evidence_handles=[f"tuning:{profile_id}"],
+            )
+            return ActionResult(request.request_id, True, "tuning profile updated", data={"active_profile_id": self.active_tuning_profile_id})
+
+        if action == ActionType.RUN_CALIBRATION_BATCH:
+            if not self.dev_mode:
+                return ActionResult(request.request_id, False, "dev mode required for tuning actions")
+            try:
+                play_type = PlayType(str(request.payload.get("play_type", "pass")))
+                sample_count = int(request.payload.get("sample_count", 500))
+                trait_profile = CalibrationTraitProfile(str(request.payload.get("trait_profile", CalibrationTraitProfile.UNIFORM_50.value)))
+                seed = request.payload.get("seed")
+                seed_value = int(seed) if seed is not None else None
+            except ValueError as exc:
+                return ActionResult(request.request_id, False, f"invalid calibration payload: {exc}")
+            run_request = CalibrationRunRequest(
+                play_type=play_type,
+                sample_count=sample_count,
+                trait_profile=trait_profile,
+                seed=seed_value,
+                tuning_profile_id=self.active_tuning_profile_id,
+            )
+            cal_result = self.calibration.run_batch(run_request)
+            self.calibration.persist_result(cal_result, self.paths.duckdb_path)
+            self._emit_dev_event(
+                event_type="calibration_batch_run",
+                claims=[f"calibration batch {cal_result.run_id} completed"],
+                evidence_handles=[f"calibration:{cal_result.run_id}", f"play_type:{cal_result.play_type.value}", f"profile:{cal_result.trait_profile.value}"],
+            )
+            return ActionResult(request.request_id, True, "calibration batch completed", data=calibration_result_to_dict(cal_result))
+
+        if action == ActionType.RUN_FOOTBALL_AUDIT:
+            if not self.dev_mode:
+                return ActionResult(request.request_id, False, "dev mode required for audit actions")
+            report = run_football_contract_audit()
+            self._emit_dev_event(
+                event_type="football_contract_audit",
+                claims=[f"football audit run {report.report_id} passed={report.passed}"],
+                evidence_handles=[f"audit:{report.report_id}"],
+            )
             return ActionResult(
                 request.request_id,
                 True,
-                f"User game finalized {result.home_score}-{result.away_score}",
+                "football audit complete",
                 data={
-                    "game_id": result.final_state.game_id,
-                    "home_team_id": result.home_team_id,
-                    "away_team_id": result.away_team_id,
-                    "home_score": result.home_score,
-                    "away_score": result.away_score,
-                    "snaps": len(result.snaps),
+                    "report_id": report.report_id,
+                    "generated_at": report.generated_at.isoformat(),
+                    "scope": report.scope,
+                    "passed": report.passed,
+                    "checks": [asdict(c) for c in report.checks],
+                },
+            )
+
+        if action in {ActionType.PLAY_USER_GAME, ActionType.PLAY_SNAP, ActionType.SIM_DRIVE}:
+            game_result = self._simulate_user_game(mode=SimMode.PLAY if action != ActionType.SIM_DRIVE else SimMode.SIM)
+            return ActionResult(
+                request.request_id,
+                True,
+                f"User game finalized {game_result.home_score}-{game_result.away_score}",
+                data={
+                    "game_id": game_result.final_state.game_id,
+                    "home_team_id": game_result.home_team_id,
+                    "away_team_id": game_result.away_team_id,
+                    "home_score": game_result.home_score,
+                    "away_score": game_result.away_score,
+                    "snaps": len(game_result.snaps),
                 },
             )
 
@@ -655,3 +735,19 @@ class DynastyRuntime:
         run_weekly_etl(self.paths.sqlite_path, self.paths.duckdb_path, self.org_state.season, max(1, self.org_state.week - 1))
         service = ExportService(self.paths.duckdb_path)
         return service.export_required_datasets(self.paths.export_dir)
+
+    def _emit_dev_event(self, *, event_type: str, claims: list[str], evidence_handles: list[str]) -> None:
+        event = NarrativeEvent(
+            event_id=make_id("ne"),
+            time=now_utc(),
+            scope="dev",
+            event_type=event_type,
+            actors=[self.user_team_id],
+            claims=claims,
+            evidence_handles=evidence_handles,
+            severity="normal",
+            confidentiality_tier="internal",
+        )
+        self.org_state.narrative_events.append(event)
+        self.store.save_narrative_events([event])
+        self.event_bus.publish_narrative(event)

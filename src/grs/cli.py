@@ -18,7 +18,7 @@ def main() -> None:
     parser.add_argument("--play-user-game", action="store_true", help="play user game before advancing each week")
     args = parser.parse_args()
 
-    runtime = DynastyRuntime(root=args.root, seed=args.seed)
+    runtime = DynastyRuntime(root=args.root, seed=args.seed, dev_mode=args.debug)
 
     if args.ui:
         from grs.ui import launch_ui
