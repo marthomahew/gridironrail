@@ -23,14 +23,21 @@ python -m grs.ui_app
 - talent profile selection (`balanced_mid` / `narrow_parity` / `top_heavy` / `rebuild_chaos`)
 - Owner/GM/Coach mode matrix with capability overrides and audit-stamped changes
 - Flexible schedule generator with odd-team bye support and uneven-group handling
+- Canonical default league identity profile: `Heritage/Frontier 32` with named conferences/divisions/teams
 - Multi-snap game sessions (clock/quarter/drive/possession transitions)
 - One football resolver path across `play`, `sim`, and `off-screen` modes
 - Strict pre-sim validation gate with hard-fail + forensic artifact on invalid inputs
+- Runtime readiness gate for analytics marts before UI analytics access
 - Externalized, versioned football resources:
 - personnel packages
 - formations
 - offensive/defensive concepts
 - coaching policies
+- Externalized org identity resources:
+- league identity profiles
+- player identity pools
+- Player creation engine v1 with generated identity fields and canonical 77-trait completeness enforcement
+- Depth chart -> package book scaffolding (off/def/ST) with hard-fail validation for unresolved required slots
 - Capability-driven canonical trait contract (lean core, no arbitrary count) with atomic storage (`player_id`, `trait_code`) and range/completeness enforcement
 - Trait canon lock approved for 77 total traits (72 active now + 5 reserved for phasal retrofit)
 - SQLite authoritative store + DuckDB analytics marts with weekly ETL

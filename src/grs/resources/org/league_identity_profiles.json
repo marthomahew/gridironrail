@@ -1,0 +1,327 @@
+{
+  "manifest": {
+    "resource_type": "league_identity_profile",
+    "schema_version": "1.0",
+    "resource_version": "1.0.0",
+    "generated_at": "2026-03-01T00:00:00Z",
+    "checksum": "94bdb7055989ba56078942a849363e3e88e8e7eb0f63eab08464454212c1b53c"
+  },
+  "resources": [
+    {
+      "id": "heritage_frontier_32_v1",
+      "kind": "fixed",
+      "conference_names": [
+        "Heritage",
+        "Frontier"
+      ],
+      "division_names": {
+        "Heritage": [
+          "North",
+          "West",
+          "South",
+          "East"
+        ],
+        "Frontier": [
+          "North",
+          "West",
+          "South",
+          "East"
+        ]
+      },
+      "teams": [
+        {
+          "team_id": "T01",
+          "team_name": "Minnesota Norsemen",
+          "conference_name": "Heritage",
+          "division_name": "North"
+        },
+        {
+          "team_id": "T02",
+          "team_name": "Chicago Grizzlies",
+          "conference_name": "Heritage",
+          "division_name": "North"
+        },
+        {
+          "team_id": "T03",
+          "team_name": "Detroit Hyenas",
+          "conference_name": "Heritage",
+          "division_name": "North"
+        },
+        {
+          "team_id": "T04",
+          "team_name": "Green Bay Union",
+          "conference_name": "Heritage",
+          "division_name": "North"
+        },
+        {
+          "team_id": "T05",
+          "team_name": "Seattle Seagulls",
+          "conference_name": "Heritage",
+          "division_name": "West"
+        },
+        {
+          "team_id": "T06",
+          "team_name": "Arizona Finches",
+          "conference_name": "Heritage",
+          "division_name": "West"
+        },
+        {
+          "team_id": "T07",
+          "team_name": "LA Billies",
+          "conference_name": "Heritage",
+          "division_name": "West"
+        },
+        {
+          "team_id": "T08",
+          "team_name": "San Francisco Miners",
+          "conference_name": "Heritage",
+          "division_name": "West"
+        },
+        {
+          "team_id": "T09",
+          "team_name": "Tampa Bay Pirates",
+          "conference_name": "Heritage",
+          "division_name": "South"
+        },
+        {
+          "team_id": "T10",
+          "team_name": "Carolina Cougars",
+          "conference_name": "Heritage",
+          "division_name": "South"
+        },
+        {
+          "team_id": "T11",
+          "team_name": "New Orleans Sentinels",
+          "conference_name": "Heritage",
+          "division_name": "South"
+        },
+        {
+          "team_id": "T12",
+          "team_name": "Atlanta Raptors",
+          "conference_name": "Heritage",
+          "division_name": "South"
+        },
+        {
+          "team_id": "T13",
+          "team_name": "Philadelphia Turkeys",
+          "conference_name": "Heritage",
+          "division_name": "East"
+        },
+        {
+          "team_id": "T14",
+          "team_name": "New York Bigmen",
+          "conference_name": "Heritage",
+          "division_name": "East"
+        },
+        {
+          "team_id": "T15",
+          "team_name": "Washington Warriors",
+          "conference_name": "Heritage",
+          "division_name": "East"
+        },
+        {
+          "team_id": "T16",
+          "team_name": "Dallas Ranchers",
+          "conference_name": "Heritage",
+          "division_name": "East"
+        },
+        {
+          "team_id": "T17",
+          "team_name": "Pittsburgh Oremen",
+          "conference_name": "Frontier",
+          "division_name": "North"
+        },
+        {
+          "team_id": "T18",
+          "team_name": "Cincinnati Sabretooths",
+          "conference_name": "Frontier",
+          "division_name": "North"
+        },
+        {
+          "team_id": "T19",
+          "team_name": "Baltimore Crows",
+          "conference_name": "Frontier",
+          "division_name": "North"
+        },
+        {
+          "team_id": "T20",
+          "team_name": "Cleveland Bulldogs",
+          "conference_name": "Frontier",
+          "division_name": "North"
+        },
+        {
+          "team_id": "T21",
+          "team_name": "Kansas City Tomahawks",
+          "conference_name": "Frontier",
+          "division_name": "West"
+        },
+        {
+          "team_id": "T22",
+          "team_name": "LA Lightning",
+          "conference_name": "Frontier",
+          "division_name": "West"
+        },
+        {
+          "team_id": "T23",
+          "team_name": "LV Plunderers",
+          "conference_name": "Frontier",
+          "division_name": "West"
+        },
+        {
+          "team_id": "T24",
+          "team_name": "Denver Mustangs",
+          "conference_name": "Frontier",
+          "division_name": "West"
+        },
+        {
+          "team_id": "T25",
+          "team_name": "Houston Steers",
+          "conference_name": "Frontier",
+          "division_name": "South"
+        },
+        {
+          "team_id": "T26",
+          "team_name": "Indianapolis Stallions",
+          "conference_name": "Frontier",
+          "division_name": "South"
+        },
+        {
+          "team_id": "T27",
+          "team_name": "Jacksonville Pumas",
+          "conference_name": "Frontier",
+          "division_name": "South"
+        },
+        {
+          "team_id": "T28",
+          "team_name": "Tennessee Hoplites",
+          "conference_name": "Frontier",
+          "division_name": "South"
+        },
+        {
+          "team_id": "T29",
+          "team_name": "New England Minutemen",
+          "conference_name": "Frontier",
+          "division_name": "East"
+        },
+        {
+          "team_id": "T30",
+          "team_name": "New York Pilots",
+          "conference_name": "Frontier",
+          "division_name": "East"
+        },
+        {
+          "team_id": "T31",
+          "team_name": "Miami Belugas",
+          "conference_name": "Frontier",
+          "division_name": "East"
+        },
+        {
+          "team_id": "T32",
+          "team_name": "Buffalo Wings",
+          "conference_name": "Frontier",
+          "division_name": "East"
+        }
+      ]
+    },
+    {
+      "id": "generated_custom_v1",
+      "kind": "generated",
+      "conference_names": [
+        "Heritage",
+        "Frontier",
+        "Summit",
+        "Coastal"
+      ],
+      "division_names": {
+        "default": [
+          "North",
+          "West",
+          "South",
+          "East",
+          "Central",
+          "Atlantic",
+          "Pacific",
+          "Mountain"
+        ]
+      },
+      "name_bank": {
+        "city_tokens": [
+          "Apex",
+          "Arbor",
+          "Ash",
+          "Bay",
+          "Beacon",
+          "Bridge",
+          "Canyon",
+          "Cedar",
+          "Crown",
+          "Drift",
+          "Ember",
+          "Falcon",
+          "Flint",
+          "Forge",
+          "Frontier",
+          "Granite",
+          "Harbor",
+          "Horizon",
+          "Iron",
+          "Juniper",
+          "Keystone",
+          "Liberty",
+          "Mesa",
+          "Monarch",
+          "Northfield",
+          "Oak",
+          "Pioneer",
+          "Port",
+          "Prairie",
+          "River",
+          "Silver",
+          "Summit",
+          "Timber",
+          "Union",
+          "Valley",
+          "Victory",
+          "Westfield"
+        ],
+        "nicknames": [
+          "Aces",
+          "Anchors",
+          "Bandits",
+          "Bears",
+          "Blaze",
+          "Captains",
+          "Chargers",
+          "Comets",
+          "Defenders",
+          "Dragons",
+          "Falcons",
+          "Giants",
+          "Guard",
+          "Hawks",
+          "Kings",
+          "Lancers",
+          "Legion",
+          "Mammoths",
+          "Marauders",
+          "Navigators",
+          "Owls",
+          "Paladins",
+          "Pioneers",
+          "Raiders",
+          "Ravens",
+          "Riders",
+          "Sentinels",
+          "Sharks",
+          "Spartans",
+          "Storm",
+          "Titans",
+          "Vikings",
+          "Wardens",
+          "Wolves"
+        ]
+      },
+      "teams": []
+    }
+  ]
+}

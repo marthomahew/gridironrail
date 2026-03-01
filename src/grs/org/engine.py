@@ -6,7 +6,6 @@ import math
 
 from grs.contracts import CapabilityPolicy, LeagueSnapshotRef, NarrativeEvent, ScheduleEntry, TeamStanding
 from grs.core import make_id, now_utc
-from grs.football.traits import generate_player_traits
 from grs.org.entities import (
     CapLedgerEntry,
     Contract,
@@ -21,6 +20,7 @@ from grs.org.entities import (
     TransactionRecord,
 )
 from grs.org.perception import build_perceived_card
+from grs.org.resources import OrgResourceResolver, PlayerCreationEngine
 
 
 @dataclass(slots=True)
@@ -31,6 +31,7 @@ class LeagueState:
     teams: list[Franchise]
     profile_id: str = ""
     league_config_id: str = ""
+    league_identity_profile_id: str = ""
     league_format_id: str = "custom_flexible_v1"
     league_format_version: str = "1.0.0"
     ruleset_id: str = "nfl_standard_v1"
@@ -63,6 +64,7 @@ class OrganizationalEngine:
         self._regular_season_weeks = regular_season_weeks
         self._postseason_weeks = postseason_weeks
         self._offseason_weeks = offseason_weeks
+        self._player_creator = PlayerCreationEngine(resource_resolver=OrgResourceResolver())
 
     def current_week(self, state: LeagueState) -> LeagueWeek:
         return LeagueWeek(season=state.season, week=state.week, phase=state.phase)
@@ -144,11 +146,17 @@ class OrganizationalEngine:
         state.prospects = []
         positions = ["QB", "RB", "WR", "TE", "OL", "DL", "LB", "CB", "S", "K", "P"]
         for i in range(size):
+            position = self._rand.choice(positions)
+            identity = self._player_creator.generate_identity(
+                position=position,
+                rand=self._rand.spawn(f"prospect:{state.season}:{state.week}:{i}"),
+                used_jerseys=set(),
+            )
             state.prospects.append(
                 Prospect(
                     prospect_id=make_id("pros"),
-                    name=f"Prospect {i + 1}",
-                    position=self._rand.choice(positions),
+                    name=identity.display_name,
+                    position=position,
                     age=self._rand.randint(21, 24),
                     draft_grade_truth=35.0 + (self._rand.rand() * 60.0),
                 )
@@ -169,27 +177,23 @@ class OrganizationalEngine:
             if len(team.roster) >= 53:
                 raise ValueError(f"cannot draft for {team.team_id}: roster full")
 
-            player = Player(
+            used_jerseys = {p.jersey_number for p in team.roster}
+            player = self._player_creator.create_player(
                 player_id=make_id("ply"),
                 team_id=team.team_id,
-                name=selected.name,
                 position=selected.position,
-                age=selected.age,
                 overall_truth=selected.draft_grade_truth,
                 volatility_truth=0.1 + (self._rand.rand() * 0.9),
                 injury_susceptibility_truth=0.1 + (self._rand.rand() * 0.8),
                 hidden_dev_curve=30.0 + (
                     65.0 * self._unit_sigmoid(((selected.draft_grade_truth + (self._rand.rand() * 16.0 - 8.0)) - 62.5) * 0.08)
                 ),
-                traits={},
+                rand=self._rand.spawn(f"draft_player:{state.season}:{state.week}:{selected.prospect_id}"),
+                used_jerseys=used_jerseys,
             )
-            player.traits = generate_player_traits(
-                player_id=player.player_id,
-                position=player.position,
-                overall_truth=player.overall_truth,
-                volatility_truth=player.volatility_truth,
-                injury_susceptibility_truth=player.injury_susceptibility_truth,
-            )
+            player.name = selected.name
+            player.display_name = selected.name
+            player.age = selected.age
             team.roster.append(player)
 
             contract = Contract(

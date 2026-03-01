@@ -16,6 +16,7 @@ from .entities import (
     TransactionRecord,
 )
 from .schedule import StandingRank, generate_season_schedule, rank_standings
+from .resources import OrgResourceResolver, PlayerCreationEngine
 from .setup import (
     CapabilityEnforcementService,
     LEAGUE_LIMITS,
@@ -61,4 +62,6 @@ __all__ = [
     "build_league_from_setup",
     "generate_season_schedule",
     "rank_standings",
+    "OrgResourceResolver",
+    "PlayerCreationEngine",
 ]

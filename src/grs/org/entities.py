@@ -67,6 +67,13 @@ class Player:
     volatility_truth: float
     injury_susceptibility_truth: float
     hidden_dev_curve: float
+    first_name: str = ""
+    last_name: str = ""
+    display_name: str = ""
+    archetype: str = ""
+    jersey_number: int = 0
+    hometown: str = ""
+    state_province: str = ""
     morale: float = 0.5
     traits: dict[str, float] = field(default_factory=dict)
 
@@ -91,6 +98,7 @@ class Franchise:
     staff: list[StaffMember] = field(default_factory=list)
     roster: list[Player] = field(default_factory=list)
     depth_chart: list[DepthChartAssignment] = field(default_factory=list)
+    package_book: dict[str, dict[str, str]] = field(default_factory=dict)
     cap_space: int = 255_000_000
     coaching_policy_id: str = "balanced_base"
     rules_profile_id: str = "nfl_standard_v1"

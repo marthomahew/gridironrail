@@ -58,6 +58,15 @@ class MainWindowFactory:
                 super().__init__()
                 self.setWindowTitle("Gridiron Rail: Sundays")
                 self.resize(1500, 920)
+                self.setStyleSheet(
+                    """
+                    QWidget { font-size: 12px; }
+                    QTableWidget { gridline-color: #d7dce5; alternate-background-color: #f5f7fb; }
+                    QHeaderView::section { background: #e8edf7; padding: 4px; border: 1px solid #d0d7e2; }
+                    QPushButton { padding: 6px 10px; }
+                    QLabel { color: #1f2630; }
+                    """
+                )
                 self._actor_team_id = actor_team_id
                 self._chart_widget: QWidget | None = None
                 self._film_payload: dict[str, Any] = {}
@@ -93,6 +102,7 @@ class MainWindowFactory:
                 self.statusBar().addPermanentWidget(clear_log)
 
                 self._init_game_controls()
+                self._refresh_runtime_readiness()
                 self._refresh_org()
                 self._refresh_league_structure()
                 self._refresh_schedule()
@@ -130,6 +140,20 @@ class MainWindowFactory:
                     self._refresh_analytics()
                 return result
 
+            def _refresh_runtime_readiness(self) -> None:
+                result = self._dispatch(ActionType.GET_RUNTIME_READINESS, {}, log=False)
+                if not result.success or not result.data:
+                    self.statusBar().showMessage("Runtime readiness unavailable", 5000)
+                    return
+                checks = result.data.get("checks", {})
+                ready = bool(result.data.get("ready"))
+                failed = [key for key, value in checks.items() if not bool(value)]
+                if ready:
+                    self.statusBar().showMessage("Runtime readiness: OK", 5000)
+                    return
+                detail = ", ".join(failed) if failed else "unknown"
+                self.statusBar().showMessage(f"Runtime readiness failed: {detail}", 10000)
+
             def _configure_table(self, table: QTableWidget) -> None:
                 table.setAlternatingRowColors(True)
                 table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -158,27 +182,71 @@ class MainWindowFactory:
                 refresh.clicked.connect(self._refresh_org)
                 advance = QPushButton("Advance Week")
                 advance.clicked.connect(lambda: self._dispatch(ActionType.ADVANCE_WEEK, {}, refresh=True))
+                auto_pkg = QPushButton("Auto-Build Packages")
+                auto_pkg.clicked.connect(self._auto_build_packages)
+                validate_pkg = QPushButton("Validate Packages")
+                validate_pkg.clicked.connect(self._validate_packages)
                 row.addWidget(refresh)
                 row.addWidget(advance)
+                row.addWidget(auto_pkg)
+                row.addWidget(validate_pkg)
                 row.addStretch(1)
                 self.org_text = QTextEdit()
                 self.org_text.setReadOnly(True)
                 self.org_text.setMinimumHeight(160)
-                self.roster_table = QTableWidget(0, 8)
+                self.roster_table = QTableWidget(0, 10)
                 self.roster_table.setHorizontalHeaderLabels(
-                    ["Player", "Name", "Pos", "Age", "Scout", "Scout Conf", "Coach", "Medical"]
+                    ["Player", "#", "Name", "Pos", "Archetype", "Age", "Scout", "Scout Conf", "Coach", "Medical"]
                 )
                 self._configure_table(self.roster_table)
                 self.depth_table = QTableWidget(0, 3)
                 self.depth_table.setHorizontalHeaderLabels(["Slot", "Player", "Priority"])
                 self._configure_table(self.depth_table)
+                self.package_table = QTableWidget(0, 3)
+                self.package_table.setHorizontalHeaderLabels(["Package", "Slot", "Player"])
+                self._configure_table(self.package_table)
+
+                edit_row = QGridLayout()
+                self.depth_slot_edit = QComboBox()
+                self.depth_player_edit = QComboBox()
+                self.depth_priority_edit = QSpinBox()
+                self.depth_priority_edit.setRange(1, 5)
+                self.depth_priority_edit.setValue(1)
+                set_depth = QPushButton("Set Depth Assignment")
+                set_depth.clicked.connect(self._upsert_depth_assignment)
+                self.package_id_edit = QComboBox()
+                self.package_slot_edit = QComboBox()
+                self.package_player_edit = QComboBox()
+                set_package = QPushButton("Set Package Assignment")
+                set_package.clicked.connect(self._upsert_package_assignment)
+
+                edit_row.addWidget(QLabel("Depth Slot"), 0, 0)
+                edit_row.addWidget(self.depth_slot_edit, 0, 1)
+                edit_row.addWidget(QLabel("Player"), 0, 2)
+                edit_row.addWidget(self.depth_player_edit, 0, 3)
+                edit_row.addWidget(QLabel("Priority"), 0, 4)
+                edit_row.addWidget(self.depth_priority_edit, 0, 5)
+                edit_row.addWidget(set_depth, 0, 6)
+
+                edit_row.addWidget(QLabel("Package"), 1, 0)
+                edit_row.addWidget(self.package_id_edit, 1, 1)
+                edit_row.addWidget(QLabel("Slot"), 1, 2)
+                edit_row.addWidget(self.package_slot_edit, 1, 3)
+                edit_row.addWidget(QLabel("Player"), 1, 4)
+                edit_row.addWidget(self.package_player_edit, 1, 5)
+                edit_row.addWidget(set_package, 1, 6)
+
+                self.package_id_edit.currentTextChanged.connect(self._on_package_changed)
+
                 layout.addLayout(row)
                 layout.addWidget(self.org_text)
+                layout.addLayout(edit_row)
                 split = QSplitter()
                 split.setOrientation(Qt.Orientation.Horizontal)
                 split.addWidget(self.roster_table)
                 split.addWidget(self.depth_table)
-                split.setSizes([920, 520])
+                split.addWidget(self.package_table)
+                split.setSizes([760, 360, 420])
                 layout.addWidget(split)
                 return w
 
@@ -459,6 +527,53 @@ class MainWindowFactory:
                         4500,
                     )
 
+            def _auto_build_packages(self) -> None:
+                result = self._dispatch(ActionType.AUTO_BUILD_PACKAGE_BOOK, {}, refresh=True)
+                if result.success:
+                    self.statusBar().showMessage("Package book rebuilt from depth chart", 5000)
+
+            def _validate_packages(self) -> None:
+                result = self._dispatch(ActionType.VALIDATE_TEAM_PACKAGES, {}, log=True)
+                if result.success:
+                    blocking = result.data.get("blocking_issues", []) if result.data else []
+                    warnings = result.data.get("warning_issues", []) if result.data else []
+                    self.statusBar().showMessage(
+                        f"Package validation: {len(blocking)} blocking / {len(warnings)} warnings",
+                        7000,
+                    )
+
+            def _upsert_depth_assignment(self) -> None:
+                if not self.depth_slot_edit.currentText() or not (self.depth_player_edit.currentData() or self.depth_player_edit.currentText()):
+                    QMessageBox.information(self, "Depth Chart", "Select a slot and player first.")
+                    return
+                payload = {
+                    "slot_role": self.depth_slot_edit.currentText(),
+                    "player_id": self.depth_player_edit.currentData() or self.depth_player_edit.currentText(),
+                    "priority": int(self.depth_priority_edit.value()),
+                    "active_flag": True,
+                }
+                result = self._dispatch(ActionType.UPSERT_DEPTH_CHART_ASSIGNMENT, payload, refresh=True)
+                if result.success:
+                    self.statusBar().showMessage("Depth chart assignment updated", 5000)
+
+            def _upsert_package_assignment(self) -> None:
+                if not self.package_id_edit.currentText() or not self.package_slot_edit.currentText():
+                    QMessageBox.information(self, "Package Assignment", "Select a package and slot first.")
+                    return
+                payload = {
+                    "package_id": self.package_id_edit.currentText(),
+                    "slot_role": self.package_slot_edit.currentText(),
+                    "player_id": self.package_player_edit.currentData() or self.package_player_edit.currentText(),
+                }
+                result = self._dispatch(ActionType.UPSERT_PACKAGE_ASSIGNMENT, payload, refresh=True)
+                if result.success:
+                    self.statusBar().showMessage("Package assignment updated", 5000)
+
+            def _on_package_changed(self, package_id: str) -> None:
+                rows = getattr(self, "_package_rows", [])
+                slots = sorted({str(row.get("slot", "")) for row in rows if str(row.get("package_id", "")) == package_id})
+                self._set_items(self.package_slot_edit, slots)
+
             def _refresh_org(self) -> None:
                 result = self._dispatch(ActionType.GET_ORG_DASHBOARD, {}, log=False)
                 if not result.success:
@@ -467,6 +582,7 @@ class MainWindowFactory:
                     self.org_text.setPlainText("No org data.")
                     self.roster_table.setRowCount(0)
                     self.depth_table.setRowCount(0)
+                    self.package_table.setRowCount(0)
                     return
                 data = result.data
                 lines = []
@@ -478,7 +594,7 @@ class MainWindowFactory:
                             f"Team: {data['team_name']} ({data['team_id']})",
                             f"Conference/Division: {data.get('conference_id', '')} / {data.get('division_id', '')}",
                             f"Owner: {data['owner']} | Mandate: {data['mandate']}",
-                            f"Cap: {data['cap_space']} | Roster: {data['roster_size']}",
+                            f"Cap: {data['cap_space']} | Roster: {data['roster_size']} | Packages: {data.get('package_count', 0)}",
                             "",
                             "Recent Transactions:",
                         ]
@@ -488,7 +604,7 @@ class MainWindowFactory:
                         [
                             f"Team: {data['team_name']} ({data['team_id']})",
                             f"Owner: {data['owner']} | Mandate: {data['mandate']}",
-                            f"Cap: {data['cap_space']} | Roster: {data['roster_size']}",
+                            f"Cap: {data['cap_space']} | Roster: {data['roster_size']} | Packages: {data.get('package_count', 0)}",
                             "",
                             "Recent Transactions:",
                         ]
@@ -503,11 +619,17 @@ class MainWindowFactory:
                 )
                 roster_rows = roster_result.data.get("roster", []) if roster_result.success else []
                 self.roster_table.setRowCount(len(roster_rows))
+                player_lookup: dict[str, str] = {}
                 for i, row in enumerate(roster_rows):
+                    player_id = str(row.get("player_id", ""))
+                    player_name = str(row.get("name", ""))
+                    player_lookup[player_id] = player_name
                     values = [
-                        row.get("player_id", ""),
-                        row.get("name", ""),
+                        player_id,
+                        row.get("jersey_number", ""),
+                        player_name,
                         row.get("position", ""),
+                        row.get("archetype", ""),
                         row.get("age", ""),
                         row.get("perceived_scout_estimate", ""),
                         row.get("perceived_scout_confidence", ""),
@@ -519,10 +641,48 @@ class MainWindowFactory:
 
                 depth = roster_result.data.get("depth_chart", []) if roster_result.success else []
                 self.depth_table.setRowCount(len(depth))
+                depth_slots: list[str] = []
                 for i, row in enumerate(depth):
-                    self.depth_table.setItem(i, 0, QTableWidgetItem(str(row.get("slot_role", ""))))
-                    self.depth_table.setItem(i, 1, QTableWidgetItem(str(row.get("player_id", ""))))
+                    slot_role = str(row.get("slot_role", ""))
+                    player_id = str(row.get("player_id", ""))
+                    depth_slots.append(slot_role)
+                    label = player_lookup.get(player_id, player_id)
+                    self.depth_table.setItem(i, 0, QTableWidgetItem(slot_role))
+                    self.depth_table.setItem(i, 1, QTableWidgetItem(f"{label} ({player_id})"))
                     self.depth_table.setItem(i, 2, QTableWidgetItem(str(row.get("priority", ""))))
+
+                self.depth_slot_edit.clear()
+                for slot in sorted(set(depth_slots)):
+                    self.depth_slot_edit.addItem(slot)
+                self.depth_player_edit.clear()
+                self.package_player_edit.clear()
+                for row in roster_rows:
+                    player_id = str(row.get("player_id", ""))
+                    label = f"#{row.get('jersey_number', '')} {row.get('name', '')} ({row.get('position', '')})"
+                    self.depth_player_edit.addItem(label, player_id)
+                    self.package_player_edit.addItem(label, player_id)
+
+                package_result = self._dispatch(
+                    ActionType.GET_PACKAGE_BOOK,
+                    {"team_id": data.get("team_id", self._actor_team_id)},
+                    log=False,
+                )
+                assignments = package_result.data.get("assignments", {}) if package_result.success else {}
+                rows: list[dict[str, str]] = []
+                for package_id, mapping in dict(assignments).items():
+                    for slot, player_id in dict(mapping).items():
+                        rows.append({"package_id": str(package_id), "slot": str(slot), "player_id": str(player_id)})
+                rows.sort(key=lambda item: (item["package_id"], item["slot"]))
+                self._package_rows = rows
+                self.package_table.setRowCount(len(rows))
+                for i, row in enumerate(rows):
+                    player_label = player_lookup.get(row["player_id"], row["player_id"])
+                    self.package_table.setItem(i, 0, QTableWidgetItem(row["package_id"]))
+                    self.package_table.setItem(i, 1, QTableWidgetItem(row["slot"]))
+                    self.package_table.setItem(i, 2, QTableWidgetItem(f"{player_label} ({row['player_id']})"))
+                package_ids = sorted({row["package_id"] for row in rows})
+                self._set_items(self.package_id_edit, package_ids)
+                self._on_package_changed(self.package_id_edit.currentText())
 
             def _refresh_league_structure(self) -> None:
                 result = self._dispatch(ActionType.GET_LEAGUE_STRUCTURE, {}, log=False)
@@ -539,6 +699,8 @@ class MainWindowFactory:
                     lines.append(f"{conference['conference_id']} ({conference['division_count']} divisions)")
                     for division in conference.get("divisions", []):
                         lines.append(f"  {division['division_id']} ({division['team_count']} teams)")
+                        for team in division.get("teams", []):
+                            lines.append(f"    - {team.get('team_name', '')} ({team.get('team_id', '')})")
                 self.league_structure.setPlainText("\n".join(lines))
 
             def _refresh_schedule(self) -> None:
@@ -840,11 +1002,11 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
         return action_handler(ActionRequest(make_id("req"), action, payload, Context.actor_team_id))
 
     class NewFranchiseWizard(QDialog):
-        PRESETS: dict[str, tuple[int, int, int, int]] = {
-            "Custom": (2, 2, 2, 18),
-            "Compact 8-Team": (2, 2, 2, 14),
-            "Balanced 16-Team": (2, 2, 4, 16),
-            "Standard 32-Team": (2, 4, 4, 18),
+        PRESETS: dict[str, tuple[int, int, int, int, str]] = {
+            "Heritage/Frontier 32 (Default)": (2, 4, 4, 18, "heritage_frontier_32_v1"),
+            "Custom Flexible": (2, 2, 4, 18, "generated_custom_v1"),
+            "Compact 8-Team": (2, 2, 2, 14, "generated_custom_v1"),
+            "Balanced 16-Team": (2, 2, 4, 16, "generated_custom_v1"),
         }
 
         def __init__(self) -> None:
@@ -883,6 +1045,9 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
             self.regular_season_weeks.setValue(18)
             self.ruleset = QComboBox()
             self.ruleset.addItem("nfl_standard_v1")
+            self.identity_profile = QComboBox()
+            self.identity_profile.addItem("Heritage/Frontier 32", "heritage_frontier_32_v1")
+            self.identity_profile.addItem("Generated Name Bank", "generated_custom_v1")
             self.difficulty = QComboBox()
             for value in ["rookie", "pro", "all_pro", "all_madden"]:
                 self.difficulty.addItem(value)
@@ -919,14 +1084,16 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
             form.addWidget(self.regular_season_weeks, 4, 3)
             form.addWidget(QLabel("Ruleset"), 5, 0)
             form.addWidget(self.ruleset, 5, 1)
-            form.addWidget(QLabel("Difficulty"), 5, 2)
-            form.addWidget(self.difficulty, 5, 3)
-            form.addWidget(QLabel("Talent"), 6, 0)
-            form.addWidget(self.talent, 6, 1)
-            form.addWidget(QLabel("Mode"), 6, 2)
-            form.addWidget(self.mode, 6, 3)
-            form.addWidget(QLabel("Topology"), 7, 0)
-            form.addWidget(self.total, 7, 1, 1, 3)
+            form.addWidget(QLabel("League Identity"), 5, 2)
+            form.addWidget(self.identity_profile, 5, 3)
+            form.addWidget(QLabel("Difficulty"), 6, 0)
+            form.addWidget(self.difficulty, 6, 1)
+            form.addWidget(QLabel("Talent"), 6, 2)
+            form.addWidget(self.talent, 6, 3)
+            form.addWidget(QLabel("Mode"), 7, 0)
+            form.addWidget(self.mode, 7, 1)
+            form.addWidget(QLabel("Topology"), 7, 2)
+            form.addWidget(self.total, 7, 3)
             form.addWidget(QLabel("Takeover Team"), 8, 0)
             form.addWidget(self.team_choice, 8, 1, 1, 3)
             root.addLayout(form)
@@ -947,14 +1114,22 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
             self.conference_count.valueChanged.connect(self._update_total)
             self.divisions_per_conf.valueChanged.connect(self._update_total)
             self.teams_per_division.valueChanged.connect(self._update_total)
+            self._apply_preset(self.preset.currentText())
             self._update_total()
 
         def _apply_preset(self, preset: str) -> None:
-            conf, divs, teams, weeks = self.PRESETS[preset]
+            conf, divs, teams, weeks, identity_profile_id = self.PRESETS[preset]
             self.conference_count.setValue(conf)
             self.divisions_per_conf.setValue(divs)
             self.teams_per_division.setValue(teams)
             self.regular_season_weeks.setValue(weeks)
+            idx = self.identity_profile.findData(identity_profile_id)
+            if idx >= 0:
+                self.identity_profile.setCurrentIndex(idx)
+            fixed_topology = identity_profile_id == "heritage_frontier_32_v1"
+            self.conference_count.setEnabled(not fixed_topology)
+            self.divisions_per_conf.setEnabled(not fixed_topology)
+            self.teams_per_division.setEnabled(not fixed_topology)
 
         def _update_total(self) -> None:
             conf = int(self.conference_count.value())
@@ -986,6 +1161,7 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
                 "ruleset_id": self.ruleset.currentText(),
                 "difficulty_profile_id": self.difficulty.currentText(),
                 "talent_profile_id": self.talent.currentText(),
+                "league_identity_profile_id": str(self.identity_profile.currentData()),
                 "user_mode": self.mode.currentText(),
                 "capability_overrides": {},
                 "league_format_id": "custom_flexible_v1",
@@ -1005,9 +1181,19 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
                 self.status.setText(result.message)
                 return
             self.team_choice.clear()
-            for team_id in result.data.get("team_candidates", []):
-                self.team_choice.addItem(team_id)
-            self.status.setText("Validation passed." if result.data.get("ok") else "Validation failed.")
+            for team in result.data.get("team_options", []):
+                label = (
+                    f"{team.get('team_name', '')} "
+                    f"({team.get('team_id', '')}) | "
+                    f"{team.get('conference_name', '')} {team.get('division_name', '')}"
+                )
+                self.team_choice.addItem(label, team.get("team_id", ""))
+            if result.data.get("ok"):
+                self.status.setText("Validation passed. Choose your takeover team.")
+                return
+            issues = result.data.get("issues", [])
+            issue_lines = [f"{issue.get('code', '')}: {issue.get('message', '')}" for issue in issues]
+            self.status.setText("Validation failed:\n" + "\n".join(issue_lines[:6]))
 
         def _create(self) -> None:
             if self.team_choice.count() == 0:
@@ -1022,7 +1208,7 @@ def launch_ui(action_handler: Callable[[ActionRequest], ActionResult], debug_mod
                 {
                     "profile_id": profile_id,
                     "profile_name": self.profile_name.text().strip(),
-                    "selected_user_team_id": self.team_choice.currentText(),
+                    "selected_user_team_id": str(self.team_choice.currentData()),
                     "setup": self._setup_payload(),
                 },
             )

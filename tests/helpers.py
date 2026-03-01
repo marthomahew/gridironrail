@@ -24,6 +24,7 @@ DEFAULT_SETUP_PAYLOAD = {
     "ruleset_id": "nfl_standard_v1",
     "difficulty_profile_id": "pro",
     "talent_profile_id": "balanced_mid",
+    "league_identity_profile_id": "generated_custom_v1",
     "user_mode": "owner",
     "capability_overrides": {},
     "league_format_id": "custom_flexible_v1",

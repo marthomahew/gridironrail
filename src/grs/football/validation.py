@@ -16,6 +16,7 @@ from grs.contracts import (
     ValidationResult,
 )
 from grs.football.contest import parse_influence_profiles, required_influence_families
+from grs.football.packages import PACKAGE_SLOT_REQUIREMENTS, required_package_ids_for_runtime, resolve_package_ids
 from grs.football.resources import ResourceResolver
 from grs.football.traits import validate_traits
 from grs.org.entities import Franchise, Player
@@ -207,6 +208,53 @@ class PreSimValidator:
                         message=f"missing {len(missing)} required traits",
                     )
                 )
+        if not team.package_book:
+            issues.append(
+                ValidationIssue(
+                    code="PACKAGE_BOOK_MISSING",
+                    severity="blocking",
+                    field_path="package_book",
+                    entity_id=team.team_id,
+                    message="team package book is missing",
+                )
+            )
+            return issues
+        for package_id in required_package_ids_for_runtime():
+            if package_id not in team.package_book:
+                issues.append(
+                    ValidationIssue(
+                        code="PACKAGE_MISSING",
+                        severity="blocking",
+                        field_path=f"package_book.{package_id}",
+                        entity_id=team.team_id,
+                        message=f"required package '{package_id}' missing",
+                    )
+                )
+                continue
+            mapping = team.package_book[package_id]
+            required_slots = PACKAGE_SLOT_REQUIREMENTS[package_id]
+            for slot_role in required_slots:
+                if slot_role not in mapping:
+                    issues.append(
+                        ValidationIssue(
+                            code="PACKAGE_SLOT_UNRESOLVED",
+                            severity="blocking",
+                            field_path=f"package_book.{package_id}.{slot_role}",
+                            entity_id=team.team_id,
+                            message=f"required slot '{slot_role}' missing in package '{package_id}'",
+                        )
+                    )
+                    continue
+                if mapping[slot_role] not in by_player:
+                    issues.append(
+                        ValidationIssue(
+                            code="PACKAGE_UNKNOWN_PLAYER",
+                            severity="blocking",
+                            field_path=f"package_book.{package_id}.{slot_role}",
+                            entity_id=team.team_id,
+                            message=f"player '{mapping[slot_role]}' not found on roster",
+                        )
+                    )
         return issues
 
     def _validate_policy(self, policy_id: str) -> list[ValidationIssue]:
@@ -227,6 +275,7 @@ class PreSimValidator:
 
     def _validate_playcall_fields(self, playcall: PlaycallRequest) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
+        formation_required_slots: list[str] = []
         if playcall.playbook_entry_id:
             try:
                 entry = self._resource_resolver.resolve_playbook_entry(playcall.playbook_entry_id)
@@ -281,6 +330,19 @@ class PreSimValidator:
                 allowed = []
             else:
                 allowed = formation["allowed_personnel"]
+                required_slots = formation.get("required_slots")
+                if not isinstance(required_slots, list) or not required_slots:
+                    issues.append(
+                        ValidationIssue(
+                            code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                            severity="blocking",
+                            field_path="formation.required_slots",
+                            entity_id=playcall.formation,
+                            message="formation is missing required_slots",
+                        )
+                    )
+                else:
+                    formation_required_slots = [str(slot) for slot in required_slots]
             if playcall.personnel not in allowed:
                 issues.append(
                     ValidationIssue(
@@ -358,6 +420,23 @@ class PreSimValidator:
                             field_path="playcall.playbook_entry_id",
                             entity_id=playcall.team_id,
                             message=f"playbook '{playcall.playbook_entry_id}' does not match resolved intent '{resolved.play_id}'",
+                        )
+                    )
+                offense_package_id, _ = resolve_package_ids(playcall.play_type, playcall.personnel)
+                package_slots = set(PACKAGE_SLOT_REQUIREMENTS[offense_package_id])
+                required_slots = set(formation_required_slots)
+                unresolved = sorted(required_slots - package_slots)
+                if unresolved:
+                    issues.append(
+                        ValidationIssue(
+                            code="FORMATION_PACKAGE_SLOT_MISMATCH",
+                            severity="blocking",
+                            field_path="playcall.formation",
+                            entity_id=playcall.team_id,
+                            message=(
+                                f"formation '{playcall.formation}' requires slots not present in "
+                                f"package '{offense_package_id}': {unresolved}"
+                            ),
                         )
                     )
             except ValidationError as exc:

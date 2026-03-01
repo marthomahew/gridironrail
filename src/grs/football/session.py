@@ -10,7 +10,6 @@ from grs.contracts import (
     GameSessionState,
     InGameState,
     ParameterizedIntent,
-    PlayType,
     PlaycallRequest,
     RandomSource,
     SimMode,
@@ -24,6 +23,8 @@ from grs.core import EngineIntegrityError, build_forensic_artifact
 from grs.football.coaching import intent_to_playcall
 from grs.football.injury import InjuryEvaluationError, InjuryEvaluator
 from grs.football.models import GameSessionResult, SnapResolution
+from grs.football.packages import PACKAGE_SLOT_REQUIREMENTS, resolve_package_ids
+from grs.football.resources import ResourceResolver
 from grs.football.resolver import FootballEngine
 from grs.football.validation import PreSimValidator
 from grs.org.entities import Franchise, Player
@@ -32,14 +33,6 @@ PlaycallProvider = Callable[[GameSessionState, str, str], PlaycallRequest | None
 
 
 class GameSessionEngine:
-    OFFENSE_SLOTS = ["QB1", "RB1", "WR1", "WR2", "WR3", "TE1", "LT", "LG", "C", "RG", "RT"]
-    DEFENSE_SLOTS = ["DE1", "DT1", "DT2", "DE2", "LB1", "LB2", "LB3", "CB1", "CB2", "S1", "S2"]
-    PUNT_OFFENSE_SLOTS = ["P", "LT", "LG", "C", "RG", "RT", "TE1", "WR1", "WR2", "CB1", "S1"]
-    PUNT_RETURN_SLOTS = ["DE1", "DT1", "DT2", "DE2", "LB1", "LB2", "LB3", "CB1", "CB2", "S1", "RB1"]
-    FIELD_GOAL_OFFENSE_SLOTS = ["K", "LT", "LG", "C", "RG", "RT", "TE1", "LB1", "LB2", "DE1", "DE2"]
-    KICKOFF_OFFENSE_SLOTS = ["K", "LB1", "LB2", "LB3", "CB1", "CB2", "S1", "S2", "DE1", "DE2", "WR1"]
-    KICKOFF_RETURN_SLOTS = ["RB1", "WR1", "WR2", "WR3", "TE1", "LB1", "LB2", "CB1", "S1", "S2", "DE1"]
-
     def __init__(
         self,
         football_engine: FootballEngine,
@@ -47,11 +40,13 @@ class GameSessionEngine:
         *,
         validator: PreSimValidator,
         random_source: RandomSource,
+        resource_resolver: ResourceResolver,
     ) -> None:
         self._football_engine = football_engine
         self._coach_engine = coach_engine
         self._validator = validator
         self._random_source = random_source
+        self._resource_resolver = resource_resolver
         self._injury_evaluator = InjuryEvaluator()
 
     def run_game(
@@ -102,7 +97,7 @@ class GameSessionEngine:
             except ValidationError as exc:
                 raise self._validation_hard_fail(state.game_id, f"{state.game_id}_P{snap_index:03d}", exc.issues, "playcall_validation") from exc
 
-            participants = self._participants(offense_team, defense_team, call.play_type)
+            participants = self._participants(offense_team, defense_team, call)
             in_game_states = self._in_game_states(participants, fatigue, state.active_injuries)
 
             scp = SnapContextPackage(
@@ -199,41 +194,62 @@ class GameSessionEngine:
             rules_profile_id=team.rules_profile_id,
         )
 
-    def _participants(self, offense_team: Franchise, defense_team: Franchise, play_type: PlayType) -> list[ActorRef]:
-        offense_slots = self._offense_slots_for_play_type(play_type)
-        defense_slots = self._defense_slots_for_play_type(play_type)
-        return self._resolve_side(offense_team, offense_slots) + self._resolve_side(defense_team, defense_slots)
+    def _participants(self, offense_team: Franchise, defense_team: Franchise, call: PlaycallRequest) -> list[ActorRef]:
+        offense_package_id, defense_package_id = resolve_package_ids(call.play_type, call.personnel)
+        formation = self._resource_resolver.resolve_formation(call.formation)
+        required_slots_raw = formation.get("required_slots")
+        if not isinstance(required_slots_raw, list) or not required_slots_raw:
+            raise ValueError(f"formation '{call.formation}' missing required_slots")
+        required_slots = [str(slot) for slot in required_slots_raw]
+        offense_template_slots = PACKAGE_SLOT_REQUIREMENTS[offense_package_id]
+        offense_slots = list(dict.fromkeys(required_slots + offense_template_slots))
+        defense_slots = list(PACKAGE_SLOT_REQUIREMENTS[defense_package_id])
+        offense = self._resolve_side(
+            team=offense_team,
+            package_id=offense_package_id,
+            required_slots=offense_slots,
+        )
+        defense = self._resolve_side(
+            team=defense_team,
+            package_id=defense_package_id,
+            required_slots=defense_slots,
+        )
+        return offense + defense
 
-    def _offense_slots_for_play_type(self, play_type: PlayType) -> list[str]:
-        if play_type == PlayType.PUNT:
-            return self.PUNT_OFFENSE_SLOTS
-        if play_type in {PlayType.FIELD_GOAL, PlayType.EXTRA_POINT}:
-            return self.FIELD_GOAL_OFFENSE_SLOTS
-        if play_type == PlayType.KICKOFF:
-            return self.KICKOFF_OFFENSE_SLOTS
-        return self.OFFENSE_SLOTS
-
-    def _defense_slots_for_play_type(self, play_type: PlayType) -> list[str]:
-        if play_type == PlayType.KICKOFF:
-            return self.KICKOFF_RETURN_SLOTS
-        if play_type == PlayType.PUNT:
-            return self.PUNT_RETURN_SLOTS
-        return self.DEFENSE_SLOTS
-
-    def _resolve_side(self, team: Franchise, slots: list[str]) -> list[ActorRef]:
+    def _resolve_side(self, *, team: Franchise, package_id: str, required_slots: list[str]) -> list[ActorRef]:
         by_id = {p.player_id: p for p in team.roster}
-        assigned = {d.slot_role: d for d in team.depth_chart if d.active_flag}
+        if package_id not in team.package_book:
+            raise ValueError(f"team {team.team_id} is missing package '{package_id}'")
+        package_assignment = team.package_book[package_id]
         actors: list[ActorRef] = []
-        for slot in slots:
-            assn = assigned.get(slot)
-            if assn is None:
-                raise ValueError(f"team {team.team_id} missing active depth slot '{slot}'")
-            if assn.player_id not in by_id:
-                raise ValueError(f"team {team.team_id} slot '{slot}' references unknown player '{assn.player_id}'")
-            p = by_id[assn.player_id]
+        resolved_player_ids: list[str] = []
+        for slot in required_slots:
+            if slot not in package_assignment:
+                raise ValueError(f"team {team.team_id} package '{package_id}' missing slot '{slot}'")
+            player_id = str(package_assignment[slot])
+            if player_id not in by_id:
+                raise ValueError(f"team {team.team_id} package '{package_id}' has unknown player '{player_id}'")
+            if player_id not in resolved_player_ids:
+                resolved_player_ids.append(player_id)
+        if len(resolved_player_ids) < 11:
+            template_slots = PACKAGE_SLOT_REQUIREMENTS[package_id]
+            for slot in template_slots:
+                player_id = str(package_assignment.get(slot, ""))
+                if not player_id:
+                    continue
+                if player_id not in by_id:
+                    raise ValueError(f"team {team.team_id} package '{package_id}' has unknown player '{player_id}'")
+                if player_id not in resolved_player_ids:
+                    resolved_player_ids.append(player_id)
+                if len(resolved_player_ids) == 11:
+                    break
+        if len(resolved_player_ids) != 11:
+            raise ValueError(
+                f"team {team.team_id} package '{package_id}' cannot field 11 unique participants (got {len(resolved_player_ids)})"
+            )
+        for player_id in resolved_player_ids:
+            p = by_id[player_id]
             actors.append(ActorRef(actor_id=p.player_id, team_id=team.team_id, role=p.position))
-        if len(actors) != 11:
-            raise ValueError(f"team {team.team_id} cannot field 11 players")
         return actors
 
     def _in_game_states(self, participants: list[ActorRef], fatigue_map: dict[str, float], injuries: dict[str, str]) -> dict[str, InGameState]:

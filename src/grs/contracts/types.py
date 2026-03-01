@@ -43,6 +43,12 @@ class ActionType(str, Enum):
     GET_TEAM_ROSTER = "get_team_roster"
     GET_WEEK_SCHEDULE = "get_week_schedule"
     SET_USER_GAME = "set_user_game"
+    GET_PACKAGE_BOOK = "get_package_book"
+    UPSERT_DEPTH_CHART_ASSIGNMENT = "upsert_depth_chart_assignment"
+    AUTO_BUILD_PACKAGE_BOOK = "auto_build_package_book"
+    UPSERT_PACKAGE_ASSIGNMENT = "upsert_package_assignment"
+    VALIDATE_TEAM_PACKAGES = "validate_team_packages"
+    GET_RUNTIME_READINESS = "get_runtime_readiness"
     ADVANCE_WEEK = "advance_week"
     PLAY_USER_GAME = "play_user_game"
     PLAY_SNAP = "play_snap"
@@ -345,6 +351,64 @@ class DepthChartAssignment:
 
 
 @dataclass(slots=True)
+class DepthChartMappingRule:
+    role_group: str
+    slot_preferences: list[str]
+
+
+@dataclass(slots=True)
+class PersonnelPackageTemplate:
+    template_id: str
+    play_type: PlayType
+    offense_roles: list[str]
+    defense_roles: list[str]
+
+
+@dataclass(slots=True)
+class FormationTemplate:
+    formation_id: str
+    allowed_personnel: list[str]
+    required_slots: list[str]
+
+
+@dataclass(slots=True)
+class TeamPackageBook:
+    team_id: str
+    season: int
+    week: int
+    assignments: dict[str, dict[str, str]]
+    source: str
+    updated_at: datetime
+
+
+@dataclass(slots=True)
+class WeekPackageBook:
+    season: int
+    week: int
+    team_books: list[TeamPackageBook]
+
+
+@dataclass(slots=True)
+class PackageAssignmentValidationReport:
+    report_id: str
+    team_id: str
+    season: int
+    week: int
+    blocking_issues: list[ValidationIssue]
+    warning_issues: list[ValidationIssue]
+    validated_at: datetime
+
+
+@dataclass(slots=True)
+class RuntimeReadinessCheck:
+    ready: bool
+    scope: str
+    checks: dict[str, bool]
+    details: dict[str, str]
+    checked_at: datetime
+
+
+@dataclass(slots=True)
 class ScheduleEntry:
     game_id: str
     season: int
@@ -460,10 +524,46 @@ class LeagueSetupConfig:
     ruleset_id: str
     difficulty_profile_id: str
     talent_profile_id: str
+    league_identity_profile_id: str
     user_mode: ManagementMode
     capability_overrides: dict[CapabilityDomain, bool] = field(default_factory=dict)
     league_format_id: str = "custom_flexible_v1"
     league_format_version: str = "1.0.0"
+
+
+@dataclass(slots=True)
+class TeamIdentityRecord:
+    team_id: str
+    team_name: str
+    conference_id: str
+    conference_name: str
+    division_id: str
+    division_name: str
+
+
+@dataclass(slots=True)
+class LeagueIdentityProfile:
+    profile_id: str
+    conference_names: list[str]
+    division_names: dict[str, list[str]]
+    teams: list[TeamIdentityRecord]
+    schema_version: str
+    resource_version: str
+    checksum: str
+    kind: str = "fixed"
+    name_bank: dict[str, list[str]] = field(default_factory=dict)
+    fixed_teams: list[dict[str, str]] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class PlayerIdentityRecord:
+    first_name: str
+    last_name: str
+    display_name: str
+    archetype: str
+    jersey_number: int
+    hometown: str
+    state_province: str
 
 
 @dataclass(slots=True)

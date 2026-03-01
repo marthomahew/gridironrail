@@ -1,0 +1,493 @@
+{
+  "manifest": {
+    "resource_type": "player_identity_pool",
+    "schema_version": "1.0",
+    "resource_version": "1.0.0",
+    "generated_at": "2026-03-01T00:00:00Z",
+    "checksum": "1ef2fbf495bf088066ca1fd32eef80340237825f5d9b53aa9e9555816ddadae7"
+  },
+  "resources": [
+    {
+      "id": "default_player_identity_v1",
+      "first_names": [
+        "Aaron",
+        "Aiden",
+        "Alex",
+        "Andre",
+        "Anthony",
+        "Ashton",
+        "Ben",
+        "Blake",
+        "Brandon",
+        "Bryce",
+        "Caden",
+        "Caleb",
+        "Cam",
+        "Carter",
+        "Chase",
+        "Chris",
+        "Clay",
+        "Cole",
+        "Connor",
+        "Corey",
+        "Damon",
+        "Daniel",
+        "Darius",
+        "David",
+        "Devin",
+        "Dominic",
+        "Drew",
+        "Eli",
+        "Elijah",
+        "Ethan",
+        "Evan",
+        "Felix",
+        "Frank",
+        "Gabe",
+        "Garrett",
+        "Gavin",
+        "Grant",
+        "Hayden",
+        "Henry",
+        "Isaiah",
+        "Jackson",
+        "Jacob",
+        "Jaden",
+        "Jake",
+        "Jalen",
+        "James",
+        "Jared",
+        "Jason",
+        "Jaylen",
+        "Jeremy",
+        "Joel",
+        "John",
+        "Jonah",
+        "Jordan",
+        "Jose",
+        "Josh",
+        "Julian",
+        "Justin",
+        "Kai",
+        "Keith",
+        "Kendall",
+        "Kevin",
+        "Kyle",
+        "Landon",
+        "Leo",
+        "Logan",
+        "Lucas",
+        "Malik",
+        "Marcus",
+        "Mason",
+        "Mateo",
+        "Matthew",
+        "Micah",
+        "Miles",
+        "Nate",
+        "Nicholas",
+        "Noah",
+        "Owen",
+        "Parker",
+        "Patrick",
+        "Preston",
+        "Quentin",
+        "Ramon",
+        "Reed",
+        "Riley",
+        "Roman",
+        "Ryan",
+        "Sam",
+        "Sean",
+        "Shawn",
+        "Spencer",
+        "Tanner",
+        "Terrance",
+        "Theo",
+        "Thomas",
+        "Tyler",
+        "Victor",
+        "Wesley",
+        "Will",
+        "Zach"
+      ],
+      "last_names": [
+        "Adams",
+        "Allen",
+        "Anderson",
+        "Armstrong",
+        "Baker",
+        "Barnes",
+        "Bennett",
+        "Bishop",
+        "Black",
+        "Boone",
+        "Bradley",
+        "Brooks",
+        "Brown",
+        "Bryant",
+        "Burke",
+        "Byrd",
+        "Campbell",
+        "Carter",
+        "Chapman",
+        "Clark",
+        "Coleman",
+        "Collins",
+        "Cook",
+        "Cooper",
+        "Cruz",
+        "Daniels",
+        "Davidson",
+        "Davis",
+        "Dixon",
+        "Douglas",
+        "Dunn",
+        "Edwards",
+        "Ellis",
+        "Evans",
+        "Fisher",
+        "Flores",
+        "Ford",
+        "Foster",
+        "Franklin",
+        "Garcia",
+        "Gardner",
+        "Gibson",
+        "Gomez",
+        "Gonzales",
+        "Gordon",
+        "Graham",
+        "Grant",
+        "Gray",
+        "Green",
+        "Griffin",
+        "Hall",
+        "Hamilton",
+        "Harris",
+        "Hayes",
+        "Henderson",
+        "Hicks",
+        "Hill",
+        "Holland",
+        "Howard",
+        "Hudson",
+        "Hughes",
+        "Hunt",
+        "Jackson",
+        "James",
+        "Jenkins",
+        "Johnson",
+        "Jones",
+        "Jordan",
+        "Kelly",
+        "King",
+        "Knight",
+        "Lane",
+        "Lawson",
+        "Lewis",
+        "Long",
+        "Lopez",
+        "Marshall",
+        "Martin",
+        "Mason",
+        "Matthews",
+        "Miller",
+        "Mitchell",
+        "Moore",
+        "Morgan",
+        "Morris",
+        "Murphy",
+        "Nelson",
+        "Nguyen",
+        "Ortiz",
+        "Owens",
+        "Parker",
+        "Patterson",
+        "Perez",
+        "Perry",
+        "Peterson",
+        "Phillips",
+        "Price",
+        "Ramirez",
+        "Reed",
+        "Reyes",
+        "Richardson",
+        "Rivera",
+        "Roberts",
+        "Robinson",
+        "Rodriguez",
+        "Rogers",
+        "Ross",
+        "Russell",
+        "Sanchez",
+        "Sanders",
+        "Scott",
+        "Simmons",
+        "Smith",
+        "Stewart",
+        "Taylor",
+        "Thomas",
+        "Thompson",
+        "Torres",
+        "Turner",
+        "Walker",
+        "Ward",
+        "Washington",
+        "Watkins",
+        "White",
+        "Williams",
+        "Wilson",
+        "Woods",
+        "Wright",
+        "Young"
+      ],
+      "hometowns": [
+        {
+          "city": "Albany",
+          "state": "NY"
+        },
+        {
+          "city": "Amarillo",
+          "state": "TX"
+        },
+        {
+          "city": "Asheville",
+          "state": "NC"
+        },
+        {
+          "city": "Baton Rouge",
+          "state": "LA"
+        },
+        {
+          "city": "Birmingham",
+          "state": "AL"
+        },
+        {
+          "city": "Boise",
+          "state": "ID"
+        },
+        {
+          "city": "Buffalo",
+          "state": "NY"
+        },
+        {
+          "city": "Charleston",
+          "state": "SC"
+        },
+        {
+          "city": "Charlotte",
+          "state": "NC"
+        },
+        {
+          "city": "Chattanooga",
+          "state": "TN"
+        },
+        {
+          "city": "Cincinnati",
+          "state": "OH"
+        },
+        {
+          "city": "Cleveland",
+          "state": "OH"
+        },
+        {
+          "city": "Columbia",
+          "state": "SC"
+        },
+        {
+          "city": "Columbus",
+          "state": "OH"
+        },
+        {
+          "city": "Dallas",
+          "state": "TX"
+        },
+        {
+          "city": "Dayton",
+          "state": "OH"
+        },
+        {
+          "city": "Denver",
+          "state": "CO"
+        },
+        {
+          "city": "Des Moines",
+          "state": "IA"
+        },
+        {
+          "city": "Detroit",
+          "state": "MI"
+        },
+        {
+          "city": "Fresno",
+          "state": "CA"
+        },
+        {
+          "city": "Grand Rapids",
+          "state": "MI"
+        },
+        {
+          "city": "Greensboro",
+          "state": "NC"
+        },
+        {
+          "city": "Houston",
+          "state": "TX"
+        },
+        {
+          "city": "Indianapolis",
+          "state": "IN"
+        },
+        {
+          "city": "Jackson",
+          "state": "MS"
+        },
+        {
+          "city": "Jacksonville",
+          "state": "FL"
+        },
+        {
+          "city": "Kansas City",
+          "state": "MO"
+        },
+        {
+          "city": "Knoxville",
+          "state": "TN"
+        },
+        {
+          "city": "Las Vegas",
+          "state": "NV"
+        },
+        {
+          "city": "Little Rock",
+          "state": "AR"
+        },
+        {
+          "city": "Los Angeles",
+          "state": "CA"
+        },
+        {
+          "city": "Louisville",
+          "state": "KY"
+        },
+        {
+          "city": "Memphis",
+          "state": "TN"
+        },
+        {
+          "city": "Miami",
+          "state": "FL"
+        },
+        {
+          "city": "Milwaukee",
+          "state": "WI"
+        },
+        {
+          "city": "Minneapolis",
+          "state": "MN"
+        },
+        {
+          "city": "Nashville",
+          "state": "TN"
+        },
+        {
+          "city": "New Orleans",
+          "state": "LA"
+        },
+        {
+          "city": "New York",
+          "state": "NY"
+        },
+        {
+          "city": "Norfolk",
+          "state": "VA"
+        },
+        {
+          "city": "Oakland",
+          "state": "CA"
+        },
+        {
+          "city": "Oklahoma City",
+          "state": "OK"
+        },
+        {
+          "city": "Omaha",
+          "state": "NE"
+        },
+        {
+          "city": "Orlando",
+          "state": "FL"
+        },
+        {
+          "city": "Philadelphia",
+          "state": "PA"
+        },
+        {
+          "city": "Phoenix",
+          "state": "AZ"
+        },
+        {
+          "city": "Pittsburgh",
+          "state": "PA"
+        },
+        {
+          "city": "Portland",
+          "state": "OR"
+        },
+        {
+          "city": "Raleigh",
+          "state": "NC"
+        },
+        {
+          "city": "Richmond",
+          "state": "VA"
+        },
+        {
+          "city": "Sacramento",
+          "state": "CA"
+        },
+        {
+          "city": "Salt Lake City",
+          "state": "UT"
+        },
+        {
+          "city": "San Antonio",
+          "state": "TX"
+        },
+        {
+          "city": "San Diego",
+          "state": "CA"
+        },
+        {
+          "city": "San Francisco",
+          "state": "CA"
+        },
+        {
+          "city": "Seattle",
+          "state": "WA"
+        },
+        {
+          "city": "St. Louis",
+          "state": "MO"
+        },
+        {
+          "city": "Tampa",
+          "state": "FL"
+        },
+        {
+          "city": "Toledo",
+          "state": "OH"
+        },
+        {
+          "city": "Tulsa",
+          "state": "OK"
+        },
+        {
+          "city": "Washington",
+          "state": "DC"
+        }
+      ]
+    }
+  ]
+}

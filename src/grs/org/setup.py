@@ -7,17 +7,20 @@ import math
 from grs.contracts import (
     CapabilityDomain,
     CapabilityPolicy,
+    LeagueIdentityProfile,
     LeagueSetupConfig,
     ManagementMode,
     ScheduleEntry,
+    ValidationError,
     ValidationIssue,
     ValidationResult,
 )
 from grs.core import default_difficulty_profiles
+from grs.football.packages import PackageCompiler
 from grs.football.resources import ResourceResolver
-from grs.football.traits import generate_player_traits
 from grs.org.engine import LeagueState
 from grs.org.entities import Franchise, LeagueStandingBook, Owner, Player, StaffMember, TeamIdentityProfile
+from grs.org.resources import OrgResourceResolver, PlayerCreationEngine
 
 
 LEAGUE_LIMITS = {
@@ -80,6 +83,8 @@ TALENT_PROFILES: dict[str, TalentProfileSpec] = {
 }
 
 SCHEDULE_POLICIES = {"balanced_round_robin", "division_weighted"}
+DEFAULT_LEAGUE_IDENTITY_PROFILE_ID = "heritage_frontier_32_v1"
+CUSTOM_LEAGUE_IDENTITY_PROFILE_ID = "generated_custom_v1"
 
 
 @dataclass(slots=True)
@@ -95,6 +100,7 @@ class TeamBlueprint:
 class LeagueSetupValidator:
     def __init__(self, resource_resolver: ResourceResolver) -> None:
         self._resource_resolver = resource_resolver
+        self._org_resource_resolver = OrgResourceResolver()
 
     def validate(self, config: LeagueSetupConfig) -> ValidationResult:
         issues: list[ValidationIssue] = []
@@ -252,6 +258,68 @@ class LeagueSetupValidator:
                     message=f"difficulty_profile_id '{config.difficulty_profile_id}' is not supported",
                 )
             )
+        if not config.league_identity_profile_id:
+            issues.append(
+                ValidationIssue(
+                    code="SETUP_MISSING_LEAGUE_IDENTITY_PROFILE",
+                    severity="blocking",
+                    field_path="league_identity_profile_id",
+                    entity_id="league_setup",
+                    message="league_identity_profile_id is required",
+                )
+            )
+        else:
+            try:
+                profile = self._org_resource_resolver.resolve_league_identity_profile(config.league_identity_profile_id)
+            except ValidationError as exc:
+                issues.extend(exc.issues)
+            else:
+                if profile.kind == "fixed":
+                    expected_conference_count = len(profile.conference_names)
+                    expected_divisions = [
+                        len(profile.division_names.get(conf_name, []))
+                        for conf_name in profile.conference_names
+                    ]
+                    expected_teams = self._fixed_profile_teams_matrix(profile)
+                    if config.conference_count != expected_conference_count:
+                        issues.append(
+                            ValidationIssue(
+                                code="SETUP_IDENTITY_TOPOLOGY_MISMATCH",
+                                severity="blocking",
+                                field_path="conference_count",
+                                entity_id="league_setup",
+                                message=(
+                                    f"identity profile '{profile.profile_id}' requires conference_count="
+                                    f"{expected_conference_count}"
+                                ),
+                            )
+                        )
+                    if config.divisions_per_conference != expected_divisions:
+                        issues.append(
+                            ValidationIssue(
+                                code="SETUP_IDENTITY_TOPOLOGY_MISMATCH",
+                                severity="blocking",
+                                field_path="divisions_per_conference",
+                                entity_id="league_setup",
+                                message=(
+                                    f"identity profile '{profile.profile_id}' requires divisions_per_conference="
+                                    f"{expected_divisions}"
+                                ),
+                            )
+                        )
+                    if config.teams_per_division != expected_teams:
+                        issues.append(
+                            ValidationIssue(
+                                code="SETUP_IDENTITY_TOPOLOGY_MISMATCH",
+                                severity="blocking",
+                                field_path="teams_per_division",
+                                entity_id="league_setup",
+                                message=(
+                                    f"identity profile '{profile.profile_id}' requires teams_per_division="
+                                    f"{expected_teams}"
+                                ),
+                            )
+                        )
 
         try:
             self._resource_resolver.resolve_rules_profile(config.ruleset_id)
@@ -280,25 +348,107 @@ class LeagueSetupValidator:
 
         return ValidationResult(ok=not issues, issues=issues)
 
+    def _fixed_profile_teams_matrix(self, profile: LeagueIdentityProfile) -> list[list[int]]:
+        matrix: list[list[int]] = []
+        for conference_name in profile.conference_names:
+            divisions = profile.division_names.get(conference_name, [])
+            row: list[int] = []
+            for division_name in divisions:
+                count = 0
+                for team in profile.fixed_teams:
+                    if team["conference_name"] == conference_name and team["division_name"] == division_name:
+                        count += 1
+                row.append(count)
+            matrix.append(row)
+        return matrix
+
 
 class LeagueStructureCompiler:
+    def __init__(self, org_resource_resolver: OrgResourceResolver | None = None) -> None:
+        self._org_resource_resolver = org_resource_resolver if org_resource_resolver is not None else OrgResourceResolver()
+
     def compile(self, config: LeagueSetupConfig) -> list[TeamBlueprint]:
+        profile = self._org_resource_resolver.resolve_league_identity_profile(config.league_identity_profile_id)
+        if profile.kind == "fixed":
+            return self._compile_fixed(config, profile)
+        return self._compile_generated(config, profile)
+
+    def _compile_fixed(self, config: LeagueSetupConfig, profile: LeagueIdentityProfile) -> list[TeamBlueprint]:
         teams: list[TeamBlueprint] = []
-        team_counter = 1
-        for conf_index in range(config.conference_count):
-            conference_id = f"C{conf_index + 1:02d}"
-            conference_name = f"Conference {conf_index + 1}"
-            division_count = config.divisions_per_conference[conf_index]
-            for div_index in range(division_count):
+        team_ids_seen: set[str] = set()
+        team_names_seen: set[str] = set()
+        conference_ids = {
+            conference_name: f"C{index + 1:02d}"
+            for index, conference_name in enumerate(profile.conference_names)
+        }
+        for conference_name in profile.conference_names:
+            conference_id = conference_ids[conference_name]
+            divisions = profile.division_names.get(conference_name, [])
+            for div_index, division_name in enumerate(divisions):
                 division_id = f"{conference_id}D{div_index + 1:02d}"
-                division_name = f"{conference_name} Division {div_index + 1}"
-                team_count = config.teams_per_division[conf_index][div_index]
-                for _ in range(team_count):
-                    team_id = f"T{team_counter:02d}"
+                division_teams = [
+                    team for team in profile.fixed_teams
+                    if team["conference_name"] == conference_name and team["division_name"] == division_name
+                ]
+                for team in division_teams:
+                    team_id = str(team["team_id"])
+                    team_name = str(team["team_name"])
+                    if team_id in team_ids_seen:
+                        raise ValueError(f"duplicate team_id '{team_id}' in identity profile '{profile.profile_id}'")
+                    if team_name in team_names_seen:
+                        raise ValueError(f"duplicate team_name '{team_name}' in identity profile '{profile.profile_id}'")
+                    team_ids_seen.add(team_id)
+                    team_names_seen.add(team_name)
                     teams.append(
                         TeamBlueprint(
                             team_id=team_id,
-                            team_name=f"Team {team_counter}",
+                            team_name=team_name,
+                            conference_id=conference_id,
+                            conference_name=conference_name,
+                            division_id=division_id,
+                            division_name=division_name,
+                        )
+                    )
+        expected_count = sum(sum(row) for row in config.teams_per_division)
+        if len(teams) != expected_count:
+            raise ValueError(
+                f"identity profile '{profile.profile_id}' resolved {len(teams)} teams but setup expects {expected_count}"
+            )
+        return teams
+
+    def _compile_generated(self, config: LeagueSetupConfig, profile: LeagueIdentityProfile) -> list[TeamBlueprint]:
+        teams: list[TeamBlueprint] = []
+        conference_bank = profile.conference_names if profile.conference_names else ["Heritage", "Frontier", "Summit", "Coastal"]
+        division_bank = profile.division_names.get("default", ["North", "West", "South", "East"])
+        name_bank = profile.name_bank
+        cities = [str(value) for value in name_bank.get("city_tokens", [])]
+        nicknames = [str(value) for value in name_bank.get("nicknames", [])]
+        if not cities or not nicknames:
+            raise ValueError(
+                f"league identity profile '{profile.profile_id}' is missing generated name_bank.city_tokens/nicknames"
+            )
+        generated_names = self._generate_unique_team_names(
+            required_count=sum(sum(row) for row in config.teams_per_division),
+            cities=cities,
+            nicknames=nicknames,
+        )
+        team_counter = 1
+        name_cursor = 0
+        for conf_index in range(config.conference_count):
+            conference_id = f"C{conf_index + 1:02d}"
+            conference_name = conference_bank[conf_index % len(conference_bank)]
+            division_count = config.divisions_per_conference[conf_index]
+            for div_index in range(division_count):
+                division_id = f"{conference_id}D{div_index + 1:02d}"
+                division_name = division_bank[div_index % len(division_bank)]
+                team_count = config.teams_per_division[conf_index][div_index]
+                for _ in range(team_count):
+                    team_id = f"T{team_counter:02d}"
+                    team_name = generated_names[name_cursor]
+                    teams.append(
+                        TeamBlueprint(
+                            team_id=team_id,
+                            team_name=team_name,
                             conference_id=conference_id,
                             conference_name=conference_name,
                             division_id=division_id,
@@ -306,7 +456,24 @@ class LeagueStructureCompiler:
                         )
                     )
                     team_counter += 1
+                    name_cursor += 1
         return teams
+
+    def _generate_unique_team_names(self, *, required_count: int, cities: list[str], nicknames: list[str]) -> list[str]:
+        names: list[str] = []
+        seen: set[str] = set()
+        for city in cities:
+            for nickname in nicknames:
+                candidate = f"{city} {nickname}"
+                if candidate in seen:
+                    continue
+                seen.add(candidate)
+                names.append(candidate)
+                if len(names) >= required_count:
+                    return names
+        raise ValueError(
+            f"name bank exhausted: required {required_count}, generated {len(names)} unique names"
+        )
 
 
 class TeamSelectionPlanner:
@@ -498,10 +665,26 @@ class RosterGenerationService:
     }
     EXTRA_POSITION_CYCLE = ["OL", "DL", "WR", "LB", "CB", "S", "RB", "TE", "QB"]
 
+    def __init__(
+        self,
+        *,
+        player_creation_engine: PlayerCreationEngine | None = None,
+        package_compiler: PackageCompiler | None = None,
+    ) -> None:
+        org_resources = OrgResourceResolver()
+        self._player_creation_engine = (
+            player_creation_engine
+            if player_creation_engine is not None
+            else PlayerCreationEngine(resource_resolver=org_resources)
+        )
+        self._package_compiler = package_compiler if package_compiler is not None else PackageCompiler()
+
     def build_team(
         self,
         *,
         blueprint: TeamBlueprint,
+        season: int,
+        week: int,
         players_per_team: int,
         cap_amount: int,
         talent_profile: TalentProfileSpec,
@@ -542,6 +725,7 @@ class RosterGenerationService:
 
         roster: list[Player] = []
         index = 1
+        used_jerseys: set[int] = set()
         for position, count in position_counts.items():
             for _ in range(count):
                 signal = self._sample_centered(rand)
@@ -574,23 +758,16 @@ class RosterGenerationService:
                     high=99.0,
                 )
                 player_id = f"{blueprint.team_id}_P{index:03d}"
-                player = Player(
+                player = self._player_creation_engine.create_player(
                     player_id=player_id,
                     team_id=blueprint.team_id,
-                    name=f"{blueprint.team_id} Player {index}",
                     position=position,
-                    age=21 + rand.randint(0, 13),
                     overall_truth=overall_truth,
                     volatility_truth=volatility_truth,
                     injury_susceptibility_truth=injury_truth,
                     hidden_dev_curve=hidden_dev_curve,
-                    traits=generate_player_traits(
-                        player_id=player_id,
-                        position=position,
-                        overall_truth=overall_truth,
-                        volatility_truth=volatility_truth,
-                        injury_susceptibility_truth=injury_truth,
-                    ),
+                    rand=rand,
+                    used_jerseys=used_jerseys,
                 )
                 roster.append(player)
                 index += 1
@@ -606,10 +783,20 @@ class RosterGenerationService:
             staff=staff,
             roster=roster,
             depth_chart=_build_depth_chart(blueprint.team_id, roster),
+            package_book={},
             cap_space=cap_amount,
             coaching_policy_id="balanced_base",
             rules_profile_id="nfl_standard_v1",
         )
+        package_book = self._package_compiler.compile_team_package_book(
+            team_id=franchise.team_id,
+            season=season,
+            week=week,
+            depth_chart=franchise.depth_chart,
+            roster_player_ids={player.player_id for player in franchise.roster},
+            source="auto_depth_chart",
+        )
+        franchise.package_book = package_book.assignments
         return franchise
 
     def _sample_centered(self, rand) -> float:
@@ -700,6 +887,8 @@ def build_league_from_setup(
         team_rand = rand.spawn(f"team:{blueprint.team_id}")
         team = roster_generator.build_team(
             blueprint=blueprint,
+            season=season,
+            week=1,
             players_per_team=config.roster_policy.players_per_team,
             cap_amount=config.cap_policy.cap_amount,
             talent_profile=talent_profile,
@@ -716,6 +905,7 @@ def build_league_from_setup(
         standings=standings,
         profile_id="",
         league_config_id="",
+        league_identity_profile_id=config.league_identity_profile_id,
         league_format_id=config.league_format_id,
         league_format_version=config.league_format_version,
         ruleset_id=config.ruleset_id,
@@ -729,15 +919,15 @@ def _build_depth_chart(team_id: str, roster: list[Player]) -> list:
     from grs.contracts import DepthChartAssignment
 
     role_map = {
-        "QB": ["QB1"],
-        "RB": ["RB1"],
-        "WR": ["WR1", "WR2", "WR3"],
-        "TE": ["TE1"],
+        "QB": ["QB1", "QB2"],
+        "RB": ["RB1", "RB2"],
+        "WR": ["WR1", "WR2", "WR3", "WR4"],
+        "TE": ["TE1", "TE2"],
         "OL": ["LT", "LG", "C", "RG", "RT"],
         "DL": ["DE1", "DT1", "DT2", "DE2"],
-        "LB": ["LB1", "LB2", "LB3"],
-        "CB": ["CB1", "CB2"],
-        "S": ["S1", "S2"],
+        "LB": ["LB1", "LB2", "LB3", "LB4"],
+        "CB": ["CB1", "CB2", "CB3"],
+        "S": ["S1", "S2", "S3"],
         "K": ["K"],
         "P": ["P"],
     }

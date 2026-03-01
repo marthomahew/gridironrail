@@ -1,22 +1,24 @@
 from __future__ import annotations
 
+from grs.core import seeded_random
 from grs.contracts import DepthChartAssignment
-from grs.football.traits import generate_player_traits
+from grs.football.packages import PackageCompiler
 from grs.org.engine import LeagueState
 from grs.org.entities import Franchise, LeagueStandingBook, Owner, Player, StaffMember, TeamIdentityProfile
+from grs.org.resources import OrgResourceResolver, PlayerCreationEngine
 
 
 def _build_depth_chart(team_id: str, roster: list[Player]) -> list[DepthChartAssignment]:
     role_map = {
-        "QB": ["QB1"],
-        "RB": ["RB1"],
-        "WR": ["WR1", "WR2", "WR3"],
-        "TE": ["TE1"],
+        "QB": ["QB1", "QB2"],
+        "RB": ["RB1", "RB2"],
+        "WR": ["WR1", "WR2", "WR3", "WR4"],
+        "TE": ["TE1", "TE2"],
         "OL": ["LT", "LG", "C", "RG", "RT"],
         "DL": ["DE1", "DT1", "DT2", "DE2"],
-        "LB": ["LB1", "LB2", "LB3"],
-        "CB": ["CB1", "CB2"],
-        "S": ["S1", "S2"],
+        "LB": ["LB1", "LB2", "LB3", "LB4"],
+        "CB": ["CB1", "CB2", "CB3"],
+        "S": ["S1", "S2", "S3"],
         "K": ["K"],
         "P": ["P"],
     }
@@ -43,6 +45,18 @@ def _build_depth_chart(team_id: str, roster: list[Player]) -> list[DepthChartAss
 
 
 def build_default_league(team_count: int = 8, season: int = 2026) -> LeagueState:
+    default_names = [
+        "Apex Guardians",
+        "Harbor Storm",
+        "Granite Wolves",
+        "River Kings",
+        "Summit Ravens",
+        "Cedar Legion",
+        "Liberty Riders",
+        "Pioneer Titans",
+    ]
+    player_creator = PlayerCreationEngine(resource_resolver=OrgResourceResolver())
+    package_compiler = PackageCompiler()
     teams: list[Franchise] = []
     standings = LeagueStandingBook()
     for idx in range(team_count):
@@ -69,6 +83,8 @@ def build_default_league(team_count: int = 8, season: int = 2026) -> LeagueState
             StaffMember(f"{team_id}_STAFF_MED", f"Medical {idx + 1}", "Medical", 0.55, 0.5, 0.5, 0.5),
         ]
         roster: list[Player] = []
+        used_jerseys: set[int] = set()
+        team_rand = seeded_random((idx + 1) * 1000)
         positions = ["QB", "RB", "WR", "TE", "OL", "DL", "LB", "CB", "S", "K", "P"]
         for p_idx in range(53):
             position = positions[p_idx % len(positions)]
@@ -77,35 +93,37 @@ def build_default_league(team_count: int = 8, season: int = 2026) -> LeagueState
             volatility_truth = 0.25 + ((p_idx % 7) * 0.08)
             injury_susceptibility_truth = 0.2 + ((p_idx % 8) * 0.07)
             roster.append(
-                Player(
+                player_creator.create_player(
                     player_id=player_id,
                     team_id=team_id,
-                    name=f"{team_id} Player {p_idx + 1}",
                     position=position,
-                    age=22 + (p_idx % 12),
                     overall_truth=overall_truth,
                     volatility_truth=volatility_truth,
                     injury_susceptibility_truth=injury_susceptibility_truth,
                     hidden_dev_curve=50 + ((p_idx % 35) * 1.1),
-                    traits=generate_player_traits(
-                        player_id=player_id,
-                        position=position,
-                        overall_truth=overall_truth,
-                        volatility_truth=volatility_truth,
-                        injury_susceptibility_truth=injury_susceptibility_truth,
-                    ),
+                    rand=team_rand.spawn(f"player:{player_id}"),
+                    used_jerseys=used_jerseys,
                 )
             )
         depth_chart = _build_depth_chart(team_id, roster)
+        package_book = package_compiler.compile_team_package_book(
+            team_id=team_id,
+            season=season,
+            week=1,
+            depth_chart=depth_chart,
+            roster_player_ids={player.player_id for player in roster},
+            source="auto_depth_chart",
+        )
         teams.append(
             Franchise(
                 team_id=team_id,
-                name=f"Team {idx + 1}",
+                name=default_names[idx % len(default_names)],
                 owner=owner,
                 identity=identity,
                 staff=staff,
                 roster=roster,
                 depth_chart=depth_chart,
+                package_book=package_book.assignments,
                 coaching_policy_id="balanced_base",
                 rules_profile_id="nfl_standard_v1",
             )

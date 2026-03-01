@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import asdict
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -11,6 +11,7 @@ from grs.contracts import (
     CausalityChain,
     LeagueSnapshotRef,
     NarrativeEvent,
+    PackageAssignmentValidationReport,
     PlayResult,
     RepLedgerEntry,
     ScheduleEntry,
@@ -61,14 +62,22 @@ class AuthoritativeStore:
                     conn.execute(
                         """
                         INSERT OR REPLACE INTO players(
-                            player_id, team_id, name, position, age, overall_truth, volatility_truth,
-                            injury_susceptibility_truth, hidden_dev_curve, morale
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            player_id, team_id, name, first_name, last_name, display_name, archetype,
+                            jersey_number, hometown, state_province, position, age, overall_truth,
+                            volatility_truth, injury_susceptibility_truth, hidden_dev_curve, morale
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             player.player_id,
                             team.team_id,
                             player.name,
+                            player.first_name,
+                            player.last_name,
+                            player.display_name,
+                            player.archetype,
+                            player.jersey_number,
+                            player.hometown,
+                            player.state_province,
                             player.position,
                             player.age,
                             player.overall_truth,
@@ -113,6 +122,35 @@ class AuthoritativeStore:
                         """,
                         (d.team_id, d.player_id, d.slot_role, d.priority, int(d.active_flag)),
                     )
+                conn.execute(
+                    "DELETE FROM team_package_books WHERE team_id = ? AND season = ? AND week = ?",
+                    (team.team_id, season, week),
+                )
+                now = datetime.now(UTC).isoformat()
+                rows: list[tuple[str, int, int, str, str, str, str, str]] = []
+                for package_id, mapping in team.package_book.items():
+                    for slot_role, player_id in mapping.items():
+                        rows.append(
+                            (
+                                team.team_id,
+                                season,
+                                week,
+                                package_id,
+                                slot_role,
+                                str(player_id),
+                                "persisted_state",
+                                now,
+                            )
+                        )
+                if rows:
+                    conn.executemany(
+                        """
+                        INSERT INTO team_package_books(
+                            team_id, season, week, package_id, slot_role, player_id, source, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        rows,
+                    )
 
             conn.execute(
                 """
@@ -150,8 +188,9 @@ class AuthoritativeStore:
                 )
                 roster_rows = conn.execute(
                     """
-                    SELECT player_id, team_id, name, position, age, overall_truth, volatility_truth,
-                           injury_susceptibility_truth, hidden_dev_curve, morale
+                    SELECT player_id, team_id, name, first_name, last_name, display_name, archetype,
+                           jersey_number, hometown, state_province, position, age, overall_truth,
+                           volatility_truth, injury_susceptibility_truth, hidden_dev_curve, morale
                     FROM players
                     WHERE team_id = ?
                     ORDER BY player_id
@@ -169,13 +208,20 @@ class AuthoritativeStore:
                             player_id=str(row[0]),
                             team_id=str(row[1]),
                             name=str(row[2]),
-                            position=str(row[3]),
-                            age=int(row[4]),
-                            overall_truth=float(row[5]),
-                            volatility_truth=float(row[6]),
-                            injury_susceptibility_truth=float(row[7]),
-                            hidden_dev_curve=float(row[8]),
-                            morale=float(row[9]),
+                            first_name=str(row[3]),
+                            last_name=str(row[4]),
+                            display_name=str(row[5]),
+                            archetype=str(row[6]),
+                            jersey_number=int(row[7]),
+                            hometown=str(row[8]),
+                            state_province=str(row[9]),
+                            position=str(row[10]),
+                            age=int(row[11]),
+                            overall_truth=float(row[12]),
+                            volatility_truth=float(row[13]),
+                            injury_susceptibility_truth=float(row[14]),
+                            hidden_dev_curve=float(row[15]),
+                            morale=float(row[16]),
                             traits={str(code): float(value) for code, value in trait_rows},
                         )
                     )
@@ -224,6 +270,19 @@ class AuthoritativeStore:
                     for row in depth_rows
                 ]
 
+                package_rows = conn.execute(
+                    """
+                    SELECT package_id, slot_role, player_id
+                    FROM team_package_books
+                    WHERE team_id = ? AND season = ? AND week = ?
+                    ORDER BY package_id, slot_role
+                    """,
+                    (team_id, season, week),
+                ).fetchall()
+                package_book: dict[str, dict[str, str]] = {}
+                for package_id, slot_role, player_id in package_rows:
+                    package_book.setdefault(str(package_id), {})[str(slot_role)] = str(player_id)
+
                 teams.append(
                     Franchise(
                         team_id=str(team_id),
@@ -238,6 +297,7 @@ class AuthoritativeStore:
                         staff=staff,
                         roster=roster,
                         depth_chart=depth_chart,
+                        package_book=package_book,
                         cap_space=int(cap_space),
                         coaching_policy_id="balanced_base",
                         rules_profile_id=str(metadata.get("ruleset_id", "nfl_standard_v1")),
@@ -334,6 +394,7 @@ class AuthoritativeStore:
             teams=teams,
             profile_id=str(metadata.get("profile_id", "")),
             league_config_id=str(metadata.get("league_config_id", "")),
+            league_identity_profile_id=str(metadata.get("league_identity_profile_id", "")),
             league_format_id=str(metadata.get("league_format_id", "custom_flexible_v1")),
             league_format_version=str(metadata.get("league_format_version", "1.0.0")),
             ruleset_id=str(metadata.get("ruleset_id", "nfl_standard_v1")),
@@ -440,6 +501,81 @@ class AuthoritativeStore:
             conn.execute(
                 "UPDATE schedule SET is_user_game = 1 WHERE season = ? AND week = ? AND game_id = ?",
                 (season, week, game_id),
+            )
+
+    def save_team_package_book(
+        self,
+        *,
+        team_id: str,
+        season: int,
+        week: int,
+        assignments: dict[str, dict[str, str]],
+        source: str,
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "DELETE FROM team_package_books WHERE team_id = ? AND season = ? AND week = ?",
+                (team_id, season, week),
+            )
+            updated_at = datetime.now(UTC).isoformat()
+            rows: list[tuple[str, int, int, str, str, str, str, str]] = []
+            for package_id, mapping in assignments.items():
+                for slot_role, player_id in mapping.items():
+                    rows.append(
+                        (
+                            team_id,
+                            season,
+                            week,
+                            package_id,
+                            slot_role,
+                            player_id,
+                            source,
+                            updated_at,
+                        )
+                    )
+            if rows:
+                conn.executemany(
+                    """
+                    INSERT INTO team_package_books(
+                        team_id, season, week, package_id, slot_role, player_id, source, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    rows,
+                )
+
+    def load_team_package_book(self, *, team_id: str, season: int, week: int) -> dict[str, dict[str, str]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT package_id, slot_role, player_id
+                FROM team_package_books
+                WHERE team_id = ? AND season = ? AND week = ?
+                ORDER BY package_id, slot_role
+                """,
+                (team_id, season, week),
+            ).fetchall()
+        package_book: dict[str, dict[str, str]] = {}
+        for package_id, slot_role, player_id in rows:
+            package_book.setdefault(str(package_id), {})[str(slot_role)] = str(player_id)
+        return package_book
+
+    def save_package_validation_report(self, report: PackageAssignmentValidationReport) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO package_assignment_validation_runs(
+                    report_id, team_id, season, week, blocking_issues_json, warning_issues_json, validated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    report.report_id,
+                    report.team_id,
+                    report.season,
+                    report.week,
+                    json.dumps([asdict(issue) for issue in report.blocking_issues]),
+                    json.dumps([asdict(issue) for issue in report.warning_issues]),
+                    report.validated_at.isoformat(),
+                ),
             )
 
     def register_game(

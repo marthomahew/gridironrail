@@ -328,6 +328,40 @@ MIGRATIONS: list[tuple[int, str]] = [
         );
         """,
     ),
+    (
+        4,
+        """
+        ALTER TABLE players ADD COLUMN first_name TEXT NOT NULL DEFAULT '';
+        ALTER TABLE players ADD COLUMN last_name TEXT NOT NULL DEFAULT '';
+        ALTER TABLE players ADD COLUMN display_name TEXT NOT NULL DEFAULT '';
+        ALTER TABLE players ADD COLUMN archetype TEXT NOT NULL DEFAULT '';
+        ALTER TABLE players ADD COLUMN jersey_number INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE players ADD COLUMN hometown TEXT NOT NULL DEFAULT '';
+        ALTER TABLE players ADD COLUMN state_province TEXT NOT NULL DEFAULT '';
+
+        CREATE TABLE IF NOT EXISTS team_package_books (
+            team_id TEXT NOT NULL,
+            season INTEGER NOT NULL,
+            week INTEGER NOT NULL,
+            package_id TEXT NOT NULL,
+            slot_role TEXT NOT NULL,
+            player_id TEXT NOT NULL,
+            source TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (team_id, season, week, package_id, slot_role)
+        );
+
+        CREATE TABLE IF NOT EXISTS package_assignment_validation_runs (
+            report_id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL,
+            season INTEGER NOT NULL,
+            week INTEGER NOT NULL,
+            blocking_issues_json TEXT NOT NULL,
+            warning_issues_json TEXT NOT NULL,
+            validated_at TEXT NOT NULL
+        );
+        """,
+    ),
 ]
 
 

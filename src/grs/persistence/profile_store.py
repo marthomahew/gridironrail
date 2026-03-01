@@ -48,6 +48,7 @@ class ProfileStore:
             ruleset_id TEXT NOT NULL,
             difficulty_profile_id TEXT NOT NULL,
             talent_profile_id TEXT NOT NULL,
+            league_identity_profile_id TEXT NOT NULL,
             league_format_id TEXT NOT NULL,
             league_format_version TEXT NOT NULL,
             created_at TEXT NOT NULL,
@@ -130,6 +131,14 @@ class ProfileStore:
         """
         with self.connect() as conn:
             conn.executescript(sql)
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(league_config)").fetchall()
+            }
+            if "league_identity_profile_id" not in columns:
+                conn.execute(
+                    "ALTER TABLE league_config ADD COLUMN league_identity_profile_id TEXT NOT NULL DEFAULT ''"
+                )
 
     def list_profiles(self) -> list[FranchiseProfile]:
         with self.connect() as conn:
@@ -219,8 +228,9 @@ class ProfileStore:
                 """
                 INSERT OR REPLACE INTO league_config(
                     league_config_id, profile_id, conference_count, divisions_per_conference_json, teams_per_division_json,
-                    ruleset_id, difficulty_profile_id, talent_profile_id, league_format_id, league_format_version, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ruleset_id, difficulty_profile_id, talent_profile_id, league_identity_profile_id,
+                    league_format_id, league_format_version, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     league_config_id,
@@ -231,6 +241,7 @@ class ProfileStore:
                     config.ruleset_id,
                     config.difficulty_profile_id,
                     config.talent_profile_id,
+                    config.league_identity_profile_id,
                     config.league_format_id,
                     config.league_format_version,
                     created_at,
@@ -387,7 +398,8 @@ class ProfileStore:
             row = conn.execute(
                 """
                 SELECT conference_count, divisions_per_conference_json, teams_per_division_json,
-                       ruleset_id, difficulty_profile_id, talent_profile_id, league_format_id, league_format_version
+                       ruleset_id, difficulty_profile_id, talent_profile_id, league_identity_profile_id,
+                       league_format_id, league_format_version
                 FROM league_config
                 WHERE league_config_id = ?
                 """,
@@ -399,6 +411,10 @@ class ProfileStore:
             ).fetchone()
         if row is None:
             return None
+        if sched_row is None:
+            raise ValueError(
+                f"league_config '{league_config_id}' is missing required schedule_policy linkage"
+            )
         return {
             "conference_count": row[0],
             "divisions_per_conference": json.loads(row[1]),
@@ -406,10 +422,11 @@ class ProfileStore:
             "ruleset_id": row[3],
             "difficulty_profile_id": row[4],
             "talent_profile_id": row[5],
-            "league_format_id": row[6],
-            "league_format_version": row[7],
-            "regular_season_weeks": int(sched_row[0]) if sched_row is not None else 18,
-            "schedule_policy_id": str(sched_row[1]) if sched_row is not None else "balanced_round_robin",
+            "league_identity_profile_id": row[6],
+            "league_format_id": row[7],
+            "league_format_version": row[8],
+            "regular_season_weeks": int(sched_row[0]),
+            "schedule_policy_id": str(sched_row[1]),
         }
 
     def load_team_topology(self, league_config_id: str) -> dict[str, dict[str, str]]:

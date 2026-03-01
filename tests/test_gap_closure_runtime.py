@@ -143,6 +143,7 @@ def test_missing_runtime_injury_trait_hard_fails() -> None:
         coach_engine=PolicyDrivenCoachDecisionEngine(repository=resource_resolver),
         validator=validator,
         random_source=seeded_random(504),
+        resource_resolver=resource_resolver,
     )
     resolution = engine.run_snap(_build_context("P_INJ", PlayType.PASS))
     player_lookup: dict[str, Player] = {}

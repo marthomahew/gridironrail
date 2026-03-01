@@ -25,7 +25,13 @@ def _make_session_engine(random_source) -> GameSessionEngine:
         validator=validator,
     )
     coach = PolicyDrivenCoachDecisionEngine(repository=resolver)
-    return GameSessionEngine(football, coach_engine=coach, validator=validator, random_source=random_source.spawn("session"))
+    return GameSessionEngine(
+        football,
+        coach_engine=coach,
+        validator=validator,
+        random_source=random_source.spawn("session"),
+        resource_resolver=resolver,
+    )
 
 
 def build_context(play_id: str, mode: SimMode = SimMode.PLAY) -> SnapContextPackage:

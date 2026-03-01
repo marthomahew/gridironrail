@@ -24,11 +24,13 @@ from grs.contracts import (
     LeagueSnapshotRef,
     ManagementMode,
     NarrativeEvent,
+    PackageAssignmentValidationReport,
     PlayType,
     PlaycallRequest,
     RosterPolicyConfig,
     TuningPatchRequest,
     RetentionPolicy,
+    RuntimeReadinessCheck,
     SchedulePolicyConfig,
     ScheduleEntry,
     SimMode,
@@ -53,6 +55,7 @@ from grs.football import (
     FootballResolver,
     GameSessionEngine,
     GameSessionResult,
+    PackageCompiler,
     PolicyDrivenCoachDecisionEngine,
     PreSimValidator,
     ResourceResolver,
@@ -74,6 +77,7 @@ from grs.org import (
 )
 from grs.org.entities import Franchise
 from grs.persistence import (
+    AnalyticsStore,
     AuthoritativeStore,
     GameRetentionContext,
     ProfileStore,
@@ -170,6 +174,7 @@ class DynastyRuntime:
         self.schedule_service = ScheduleGenerationService()
         self.roster_generation_service = RosterGenerationService()
         self.capability_service = CapabilityEnforcementService()
+        self.package_compiler = PackageCompiler()
         self.org_engine = OrganizationalEngine(
             rand=self.rand.spawn("org"),
             difficulty=self.difficulty,
@@ -188,9 +193,11 @@ class DynastyRuntime:
             self.coach_engine,
             validator=self.pre_sim_validator,
             random_source=self.rand.spawn("session"),
+            resource_resolver=self.resource_resolver,
         )
         self.retention_policy = RetentionPolicy()
         self.dev_calibration: DevCalibrationGateway | None = None
+        self.runtime_readiness: RuntimeReadinessCheck | None = None
 
         self.halted = False
         self.last_forensic_path: str | None = None
@@ -241,6 +248,38 @@ class DynastyRuntime:
 
     def _handle_action_core(self, request: ActionRequest) -> ActionResult:
         action = self._normalize_action(request.action_type)
+
+        profile_required_actions = {
+            ActionType.SET_ACTIVE_MODE,
+            ActionType.SET_CAPABILITY_OVERRIDE,
+            ActionType.GET_ORG_DASHBOARD,
+            ActionType.GET_LEAGUE_STRUCTURE,
+            ActionType.GET_TEAM_ROSTER,
+            ActionType.GET_PACKAGE_BOOK,
+            ActionType.UPSERT_DEPTH_CHART_ASSIGNMENT,
+            ActionType.AUTO_BUILD_PACKAGE_BOOK,
+            ActionType.UPSERT_PACKAGE_ASSIGNMENT,
+            ActionType.VALIDATE_TEAM_PACKAGES,
+            ActionType.GET_WEEK_SCHEDULE,
+            ActionType.SET_USER_GAME,
+            ActionType.SET_PLAYCALL,
+            ActionType.PLAY_USER_GAME,
+            ActionType.PLAY_SNAP,
+            ActionType.SIM_DRIVE,
+            ActionType.ADVANCE_WEEK,
+            ActionType.GET_ORG_OVERVIEW,
+            ActionType.GET_STANDINGS,
+            ActionType.GET_GAME_STATE,
+            ActionType.GET_RETAINED_GAMES,
+            ActionType.LOAD_RETAINED,
+            ActionType.GET_FILM_ROOM_GAME,
+            ActionType.GET_ANALYTICS_SERIES,
+            ActionType.DEBUG_TRUTH,
+        }
+        if action in profile_required_actions:
+            profile_error = self._require_active_profile_action()
+            if profile_error is not None:
+                return ActionResult(request.request_id, False, profile_error)
 
         if action == ActionType.LIST_PROFILES:
             profiles = self.profile_store.list_profiles()
@@ -319,8 +358,10 @@ class DynastyRuntime:
                 return ActionResult(request.request_id, False, f"invalid setup payload: {exc}")
             report = self._validate_setup(profile_id=profile_id, setup_config=setup_config)
             team_candidates: list[str] = []
+            team_options: list[dict[str, str]] = []
             if not report.blocking_issues:
-                team_candidates = self._team_candidates_for_setup(setup_config)
+                team_options = self._team_candidates_for_setup(setup_config)
+                team_candidates = [option["team_id"] for option in team_options]
             return ActionResult(
                 request.request_id,
                 True,
@@ -330,6 +371,7 @@ class DynastyRuntime:
                     "report_id": report.report_id,
                     "issues": [asdict(issue) for issue in report.blocking_issues],
                     "team_candidates": team_candidates,
+                    "team_options": team_options,
                 },
             )
 
@@ -439,6 +481,7 @@ class DynastyRuntime:
                     "division_id": team.division_id,
                     "cap_space": team.cap_space,
                     "roster_size": len(team.roster),
+                    "package_count": len(team.package_book),
                     "owner": team.owner.name,
                     "mandate": team.owner.mandate,
                     "transactions": [asdict(t) for t in self.org_state.transactions[-12:]],
@@ -511,6 +554,8 @@ class DynastyRuntime:
                     {
                         "player_id": player.player_id,
                         "name": player.name,
+                        "jersey_number": player.jersey_number,
+                        "archetype": player.archetype,
                         "position": player.position,
                         "age": player.age,
                         "morale": round(player.morale, 3),
@@ -532,6 +577,189 @@ class DynastyRuntime:
                     "division_id": team.division_id,
                     "roster": roster_rows,
                     "depth_chart": [asdict(d) for d in depth],
+                },
+            )
+
+        if action == ActionType.GET_PACKAGE_BOOK:
+            self._require_active_profile_action()
+            assert self.org_state is not None
+            team_id = str(request.payload["team_id"]) if "team_id" in request.payload else self.user_team_id
+            team = self._team(team_id)
+            return ActionResult(
+                request.request_id,
+                True,
+                "package book",
+                data={
+                    "team_id": team.team_id,
+                    "team_name": team.name,
+                    "season": self.org_state.season,
+                    "week": self.org_state.week,
+                    "assignments": team.package_book,
+                },
+            )
+
+        if action == ActionType.UPSERT_DEPTH_CHART_ASSIGNMENT:
+            deny = self._require_capability(CapabilityDomain.DEPTH_CHART)
+            if deny is not None:
+                return ActionResult(request.request_id, False, deny)
+            self._require_active_profile_action()
+            assert self.org_state is not None
+            if "slot_role" not in request.payload or "player_id" not in request.payload:
+                return ActionResult(request.request_id, False, "slot_role and player_id are required")
+            team_id = str(request.payload["team_id"]) if "team_id" in request.payload else self.user_team_id
+            team = self._team(team_id)
+            slot_role = str(request.payload["slot_role"])
+            player_id = str(request.payload["player_id"])
+            priority = int(request.payload["priority"]) if "priority" in request.payload else 1
+            active_flag = bool(request.payload["active_flag"]) if "active_flag" in request.payload else True
+            if player_id not in {player.player_id for player in team.roster}:
+                return ActionResult(request.request_id, False, f"player '{player_id}' is not on team '{team_id}'")
+            replaced = False
+            for assignment in team.depth_chart:
+                if assignment.slot_role == slot_role and assignment.priority == priority:
+                    assignment.player_id = player_id
+                    assignment.active_flag = active_flag
+                    replaced = True
+                    break
+            if not replaced:
+                from grs.contracts import DepthChartAssignment
+
+                team.depth_chart.append(
+                    DepthChartAssignment(
+                        team_id=team_id,
+                        player_id=player_id,
+                        slot_role=slot_role,
+                        priority=priority,
+                        active_flag=active_flag,
+                    )
+                )
+            self._persist_league_state()
+            return ActionResult(
+                request.request_id,
+                True,
+                "depth assignment updated",
+                data={
+                    "team_id": team_id,
+                    "slot_role": slot_role,
+                    "player_id": player_id,
+                    "priority": priority,
+                    "active_flag": active_flag,
+                },
+            )
+
+        if action == ActionType.AUTO_BUILD_PACKAGE_BOOK:
+            deny = self._require_capability(CapabilityDomain.GAMEPLAN)
+            if deny is not None:
+                return ActionResult(request.request_id, False, deny)
+            self._require_active_profile_action()
+            assert self.org_state is not None
+            assert self.store is not None
+            team_id = str(request.payload["team_id"]) if "team_id" in request.payload else self.user_team_id
+            team = self._team(team_id)
+            pkg_report = self._auto_build_team_package_book(team=team, source="manual_auto_build")
+            if pkg_report.blocking_issues:
+                return ActionResult(
+                    request.request_id,
+                    False,
+                    "package compilation failed",
+                    data={"issues": [asdict(issue) for issue in pkg_report.blocking_issues]},
+                )
+            self._persist_league_state()
+            return ActionResult(
+                request.request_id,
+                True,
+                "package book compiled",
+                data={
+                    "team_id": team_id,
+                    "assignments": team.package_book,
+                    "warnings": [asdict(issue) for issue in pkg_report.warning_issues],
+                },
+            )
+
+        if action == ActionType.UPSERT_PACKAGE_ASSIGNMENT:
+            deny = self._require_capability(CapabilityDomain.GAMEPLAN)
+            if deny is not None:
+                return ActionResult(request.request_id, False, deny)
+            self._require_active_profile_action()
+            assert self.org_state is not None
+            assert self.store is not None
+            required = {"package_id", "slot_role", "player_id"}
+            missing = sorted(required - set(request.payload.keys()))
+            if missing:
+                return ActionResult(request.request_id, False, f"missing fields: {', '.join(missing)}")
+            team_id = str(request.payload["team_id"]) if "team_id" in request.payload else self.user_team_id
+            team = self._team(team_id)
+            player_id = str(request.payload["player_id"])
+            if player_id not in {player.player_id for player in team.roster}:
+                return ActionResult(request.request_id, False, f"player '{player_id}' is not on team '{team_id}'")
+            try:
+                updated_assignments = self.package_compiler.update_assignment(
+                    team_id=team.team_id,
+                    package_book=team.package_book,
+                    package_id=str(request.payload["package_id"]),
+                    slot_role=str(request.payload["slot_role"]),
+                    player_id=player_id,
+                )
+            except ValidationError as exc:
+                return ActionResult(
+                    request.request_id,
+                    False,
+                    "package assignment rejected",
+                    data={"issues": [asdict(issue) for issue in exc.issues]},
+                )
+            pkg_report = self.package_compiler.validate_team_package_book(
+                team_id=team.team_id,
+                season=self.org_state.season,
+                week=self.org_state.week,
+                package_book=updated_assignments,
+                roster_player_ids={player.player_id for player in team.roster},
+            )
+            self.store.save_package_validation_report(pkg_report)
+            if pkg_report.blocking_issues:
+                return ActionResult(
+                    request.request_id,
+                    False,
+                    "package assignment rejected",
+                    data={"issues": [asdict(issue) for issue in pkg_report.blocking_issues]},
+                )
+            team.package_book = updated_assignments
+            self.store.save_team_package_book(
+                team_id=team.team_id,
+                season=self.org_state.season,
+                week=self.org_state.week,
+                assignments=team.package_book,
+                source="manual_assignment",
+            )
+            self._persist_league_state()
+            return ActionResult(
+                request.request_id,
+                True,
+                "package assignment updated",
+                data={"team_id": team.team_id, "assignments": team.package_book},
+            )
+
+        if action == ActionType.VALIDATE_TEAM_PACKAGES:
+            self._require_active_profile_action()
+            assert self.org_state is not None
+            assert self.store is not None
+            team_id = str(request.payload["team_id"]) if "team_id" in request.payload else self.user_team_id
+            team = self._team(team_id)
+            pkg_report = self.package_compiler.validate_team_package_book(
+                team_id=team.team_id,
+                season=self.org_state.season,
+                week=self.org_state.week,
+                package_book=team.package_book,
+                roster_player_ids={player.player_id for player in team.roster},
+            )
+            self.store.save_package_validation_report(pkg_report)
+            return ActionResult(
+                request.request_id,
+                True,
+                "package validation report",
+                data={
+                    "team_id": team.team_id,
+                    "blocking_issues": [asdict(issue) for issue in pkg_report.blocking_issues],
+                    "warning_issues": [asdict(issue) for issue in pkg_report.warning_issues],
                 },
             )
 
@@ -609,6 +837,21 @@ class DynastyRuntime:
                 True,
                 "user game selected",
                 data={"season": season, "week": week, "game_id": game_id},
+            )
+
+        if action == ActionType.GET_RUNTIME_READINESS:
+            readiness = self._runtime_readiness_snapshot()
+            return ActionResult(
+                request.request_id,
+                True,
+                "runtime readiness",
+                data={
+                    "ready": readiness.ready,
+                    "scope": readiness.scope,
+                    "checks": dict(readiness.checks),
+                    "details": dict(readiness.details),
+                    "checked_at": readiness.checked_at.isoformat(),
+                },
             )
 
         profile_free_actions = {
@@ -985,6 +1228,7 @@ class DynastyRuntime:
         assert self.store is not None
         season = self.org_state.season
         week = self.org_state.week
+        self._compile_week_package_books(source="week_advance")
 
         finalized_game_ids: list[str] = []
         integrity_checks: list[str] = []
@@ -1050,7 +1294,9 @@ class DynastyRuntime:
         self.org_engine.advance_week(self.org_state)
         if self.org_state.phase == "regular":
             self._ensure_schedule_for_season(self.org_state.season)
+            self._compile_week_package_books(source="post_advance_regular")
         self._persist_league_state()
+        self.runtime_readiness = self._compute_runtime_readiness(scope="post_week_advance")
         return week_result
 
     def _simulate_user_game(self, mode: SimMode) -> GameSessionResult:
@@ -1227,6 +1473,90 @@ class DynastyRuntime:
             )
             raise EngineIntegrityError(artifact) from exc
 
+    def _auto_build_team_package_book(
+        self,
+        *,
+        team: Franchise,
+        source: str,
+    ) -> PackageAssignmentValidationReport:
+        assert self.org_state is not None
+        assert self.store is not None
+        roster_ids = {player.player_id for player in team.roster}
+        try:
+            compiled = self.package_compiler.compile_team_package_book(
+                team_id=team.team_id,
+                season=self.org_state.season,
+                week=self.org_state.week,
+                depth_chart=team.depth_chart,
+                roster_player_ids=roster_ids,
+                source=source,
+            )
+            team.package_book = compiled.assignments
+        except ValidationError as exc:
+            report = PackageAssignmentValidationReport(
+                report_id=make_id("pkgval"),
+                team_id=team.team_id,
+                season=self.org_state.season,
+                week=self.org_state.week,
+                blocking_issues=exc.issues,
+                warning_issues=[],
+                validated_at=now_utc(),
+            )
+            self.store.save_package_validation_report(report)
+            return report
+        report = self.package_compiler.validate_team_package_book(
+            team_id=team.team_id,
+            season=self.org_state.season,
+            week=self.org_state.week,
+            package_book=team.package_book,
+            roster_player_ids=roster_ids,
+        )
+        self.store.save_package_validation_report(report)
+        if not report.blocking_issues:
+            self.store.save_team_package_book(
+                team_id=team.team_id,
+                season=self.org_state.season,
+                week=self.org_state.week,
+                assignments=team.package_book,
+                source=source,
+            )
+        return report
+
+    def _compile_week_package_books(self, *, source: str) -> None:
+        assert self.org_state is not None
+        assert self.store is not None
+        blocking: dict[str, list[dict[str, str]]] = {}
+        for team in self.org_state.teams:
+            if team.package_book and source == "profile_activate":
+                report = self.package_compiler.validate_team_package_book(
+                    team_id=team.team_id,
+                    season=self.org_state.season,
+                    week=self.org_state.week,
+                    package_book=team.package_book,
+                    roster_player_ids={player.player_id for player in team.roster},
+                )
+                self.store.save_package_validation_report(report)
+            else:
+                report = self._auto_build_team_package_book(team=team, source=source)
+            if report.blocking_issues:
+                blocking[team.team_id] = [asdict(issue) for issue in report.blocking_issues]
+        if not blocking:
+            return
+        artifact = build_forensic_artifact(
+            engine_scope="runtime",
+            error_code="PACKAGE_BOOK_VALIDATION_FAILED",
+            message="one or more teams failed package compilation/validation",
+            state_snapshot={
+                "season": self.org_state.season,
+                "week": self.org_state.week,
+                "phase": self.org_state.phase,
+            },
+            context={"blocking_issues": blocking, "source": source},
+            identifiers={"team_id": self.user_team_id},
+            causal_fragment=["package_compilation", source],
+        )
+        raise EngineIntegrityError(artifact)
+
     def _run_offseason_gate(self) -> None:
         assert self.org_state is not None
         gate = self.org_engine.offseason_gate(self.org_state)
@@ -1294,6 +1624,7 @@ class DynastyRuntime:
             "user_team_id": self.user_team_id,
             "profile_id": self.org_state.profile_id,
             "league_config_id": self.org_state.league_config_id,
+            "league_identity_profile_id": self.org_state.league_identity_profile_id,
             "league_format_id": self.org_state.league_format_id,
             "league_format_version": self.org_state.league_format_version,
             "ruleset_id": self.org_state.ruleset_id,
@@ -1374,6 +1705,7 @@ class DynastyRuntime:
             ruleset_id=str(payload["ruleset_id"]),
             difficulty_profile_id=str(payload["difficulty_profile_id"]),
             talent_profile_id=str(payload["talent_profile_id"]),
+            league_identity_profile_id=str(payload["league_identity_profile_id"]),
             user_mode=ManagementMode(str(payload["user_mode"])),
             capability_overrides=overrides,
             league_format_id=str(payload["league_format_id"]) if "league_format_id" in payload else "custom_flexible_v1",
@@ -1396,9 +1728,17 @@ class DynastyRuntime:
         self.profile_store.save_validation_report(report)
         return report
 
-    def _team_candidates_for_setup(self, setup_config: LeagueSetupConfig) -> list[str]:
+    def _team_candidates_for_setup(self, setup_config: LeagueSetupConfig) -> list[dict[str, str]]:
         blueprints = self.structure_compiler.compile(setup_config)
-        return self.team_selection_planner.team_ids(blueprints)
+        return [
+            {
+                "team_id": blueprint.team_id,
+                "team_name": blueprint.team_name,
+                "conference_name": blueprint.conference_name,
+                "division_name": blueprint.division_name,
+            }
+            for blueprint in blueprints
+        ]
 
     def _create_new_franchise_save(
         self,
@@ -1430,7 +1770,8 @@ class DynastyRuntime:
             )
 
         candidates = self._team_candidates_for_setup(setup_config)
-        if selected_team_id not in candidates:
+        candidate_ids = {option["team_id"] for option in candidates}
+        if selected_team_id not in candidate_ids:
             raise ValueError(
                 f"selected_user_team_id '{selected_team_id}' is not valid for the generated league topology"
             )
@@ -1498,6 +1839,7 @@ class DynastyRuntime:
             "team_count": len(blueprints),
             "conference_count": setup_config.conference_count,
             "weeks": setup_config.schedule_policy.regular_season_weeks,
+            "league_identity_profile_id": setup_config.league_identity_profile_id,
             "mode": setup_config.user_mode.value,
         }
 
@@ -1538,6 +1880,9 @@ class DynastyRuntime:
             regular_season_weeks=regular_season_weeks,
         )
 
+        self._compile_week_package_books(source="profile_activate")
+        self._bootstrap_runtime_readiness()
+
         self.dev_calibration = None
         if self.dev_mode:
             self.dev_calibration = self._load_dev_calibration_gateway()
@@ -1567,6 +1912,7 @@ class DynastyRuntime:
         loaded_state.profile_id = profile.profile_id
         loaded_state.league_config_id = profile.league_config_ref
         loaded_state.ruleset_id = str(config_row["ruleset_id"])
+        loaded_state.league_identity_profile_id = str(config_row["league_identity_profile_id"])
         loaded_state.league_format_id = str(config_row["league_format_id"])
         loaded_state.league_format_version = str(config_row["league_format_version"])
         loaded_state.schedule_policy_id = str(config_row["schedule_policy_id"])
@@ -1591,7 +1937,7 @@ class DynastyRuntime:
             profile=profile,
             state=loaded_state,
             capability_policy=mode_policy,
-            regular_season_weeks=int(config_row.get("regular_season_weeks", 18)),
+            regular_season_weeks=int(config_row["regular_season_weeks"]),
             difficulty_profile_id=str(config_row["difficulty_profile_id"]),
         )
         self.profile_store.touch_profile(profile.profile_id, now_utc())
@@ -1657,8 +2003,129 @@ class DynastyRuntime:
             self.store.save_narrative_events([event])
         self.event_bus.publish_narrative(event)
 
+    def _bootstrap_runtime_readiness(self) -> None:
+        if self.org_state is None:
+            raise ValueError("runtime readiness bootstrap requires loaded org state")
+        analytics_store = AnalyticsStore(self.paths.duckdb_path)
+        analytics_store.initialize_schema()
+        etl_week = self.org_state.week
+        if etl_week < 1:
+            raise ValueError("etl week must be >= 1 during readiness bootstrap")
+        run_weekly_etl(self.paths.sqlite_path, self.paths.duckdb_path, self.org_state.season, etl_week)
+        readiness = self._compute_runtime_readiness(scope="startup")
+        if not readiness.ready:
+            artifact = build_forensic_artifact(
+                engine_scope="runtime",
+                error_code="MISSING_REQUIRED_RUNTIME_CONFIG",
+                message="runtime readiness checks failed",
+                state_snapshot={
+                    "season": self.org_state.season,
+                    "week": self.org_state.week,
+                    "phase": self.org_state.phase,
+                },
+                context={"checks": readiness.checks, "details": readiness.details},
+                identifiers={"team_id": self.user_team_id},
+                causal_fragment=["runtime_readiness", "startup"],
+            )
+            raise EngineIntegrityError(artifact)
+        self.runtime_readiness = readiness
+
+    def _compute_runtime_readiness(self, *, scope: str) -> RuntimeReadinessCheck:
+        checks: dict[str, bool] = {}
+        details: dict[str, str] = {}
+        if self.org_state is None:
+            checks["active_profile"] = False
+            details["active_profile"] = "no active org state loaded"
+            return RuntimeReadinessCheck(
+                ready=False,
+                scope=scope,
+                checks=checks,
+                details=details,
+                checked_at=now_utc(),
+            )
+        checks["active_profile"] = self.active_profile is not None
+        details["active_profile"] = (
+            "ok" if checks["active_profile"] else "active profile is not loaded"
+        )
+        checks["sqlite_authoritative"] = self.paths.sqlite_path.exists()
+        details["sqlite_authoritative"] = (
+            "ok" if checks["sqlite_authoritative"] else "authoritative sqlite DB missing"
+        )
+        checks["duckdb_analytics_file"] = self.paths.duckdb_path.exists()
+        details["duckdb_analytics_file"] = (
+            "ok" if checks["duckdb_analytics_file"] else "analytics duckdb DB missing"
+        )
+
+        try:
+            import duckdb
+        except ModuleNotFoundError:
+            checks["duckdb_dependency"] = False
+            details["duckdb_dependency"] = "duckdb dependency is not installed"
+            return RuntimeReadinessCheck(
+                ready=all(checks.values()),
+                scope=scope,
+                checks=checks,
+                details=details,
+                checked_at=now_utc(),
+            )
+
+        checks["duckdb_dependency"] = True
+        details["duckdb_dependency"] = "ok"
+        required_marts = [
+            "mart_traditional_stats",
+            "mart_game_summaries",
+            "mart_transactions",
+            "mart_cap_history",
+        ]
+        with duckdb.connect(str(self.paths.duckdb_path)) as conn:
+            for table_name in required_marts:
+                row = conn.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM information_schema.tables
+                    WHERE table_schema = 'main' AND table_name = ?
+                    """,
+                    [table_name],
+                ).fetchone()
+                exists = bool(row and int(row[0]) >= 1)
+                checks[f"mart:{table_name}"] = exists
+                details[f"mart:{table_name}"] = "ok" if exists else "missing required mart table"
+        return RuntimeReadinessCheck(
+            ready=all(checks.values()),
+            scope=scope,
+            checks=checks,
+            details=details,
+            checked_at=now_utc(),
+        )
+
+    def _runtime_readiness_snapshot(self) -> RuntimeReadinessCheck:
+        if self.runtime_readiness is None:
+            self.runtime_readiness = self._compute_runtime_readiness(scope="on_demand")
+        return self.runtime_readiness
+
+    def _assert_runtime_readiness(self, *, scope: str) -> None:
+        readiness = self._compute_runtime_readiness(scope=scope)
+        self.runtime_readiness = readiness
+        if readiness.ready:
+            return
+        artifact = build_forensic_artifact(
+            engine_scope="runtime",
+            error_code="MISSING_REQUIRED_RUNTIME_CONFIG",
+            message="runtime readiness checks failed",
+            state_snapshot={
+                "season": self.org_state.season if self.org_state else -1,
+                "week": self.org_state.week if self.org_state else -1,
+                "phase": self.org_state.phase if self.org_state else "uninitialized",
+            },
+            context={"checks": readiness.checks, "details": readiness.details},
+            identifiers={"team_id": self.user_team_id},
+            causal_fragment=["runtime_readiness", scope],
+        )
+        raise EngineIntegrityError(artifact)
+
     def _analytics_series(self) -> dict[str, Any]:
         assert self.org_state is not None
+        self._assert_runtime_readiness(scope="analytics_query")
         try:
             import duckdb
         except ModuleNotFoundError:
