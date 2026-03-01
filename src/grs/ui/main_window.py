@@ -228,16 +228,41 @@ class MainWindowFactory:
             def _home_tab(self):
                 w = QWidget()
                 layout = QVBoxLayout(w)
+                intro = QLabel(
+                    "Quick Start Workflow: 1) Refresh this week 2) Select a game row "
+                    "3) Set selected user game 4) Set playcall 5) Play or Sim."
+                )
+                intro.setWordWrap(True)
+                intro.setStyleSheet(
+                    "background:#eaf3ff; border:1px solid #b8cee6; padding:8px; border-radius:4px; font-weight:600;"
+                )
+                layout.addWidget(intro)
+
                 top_row = QHBoxLayout()
-                refresh_home = QPushButton("Refresh Home")
+                refresh_home = QPushButton("Refresh Dashboard")
                 refresh_home.clicked.connect(self._refresh_home)
+                refresh_home.setToolTip("Reload status and workflow checklist.")
                 refresh_schedule = QPushButton("Refresh This Week")
                 refresh_schedule.clicked.connect(self._refresh_schedule)
+                refresh_schedule.setToolTip("Load schedule rows for selected week.")
                 set_user_game = QPushButton("Set Selected User Game")
                 set_user_game.clicked.connect(self._set_user_game)
+                set_user_game.setToolTip("Mark highlighted schedule row as your active user game.")
+                self.btn_set_playcall = QPushButton("Set Playcall")
+                self.btn_set_playcall.clicked.connect(self._set_playcall)
+                self.btn_set_playcall.setToolTip("Submit current playcall parameters to the runtime.")
+                self.btn_play_game = QPushButton("Play User Game")
+                self.btn_play_game.clicked.connect(self._play_user_game)
+                self.btn_play_game.setToolTip("Run the selected user game through the main play flow.")
+                self.btn_sim_drive = QPushButton("Sim Next Drive")
+                self.btn_sim_drive.clicked.connect(self._sim_next_drive)
+                self.btn_sim_drive.setToolTip("Advance the game quickly by simulating a drive.")
                 top_row.addWidget(refresh_home)
                 top_row.addWidget(refresh_schedule)
                 top_row.addWidget(set_user_game)
+                top_row.addWidget(self.btn_set_playcall)
+                top_row.addWidget(self.btn_play_game)
+                top_row.addWidget(self.btn_sim_drive)
                 top_row.addStretch(1)
                 layout.addLayout(top_row)
 
@@ -252,6 +277,7 @@ class MainWindowFactory:
                 self.schedule_week = QSpinBox()
                 self.schedule_week.setRange(1, 24)
                 self.schedule_week.setValue(1)
+                self.schedule_week.valueChanged.connect(lambda _value: self._refresh_schedule())
                 header_row.addWidget(self.current_week_label)
                 header_row.addSpacing(18)
                 header_row.addWidget(self.user_game_label)
@@ -275,7 +301,7 @@ class MainWindowFactory:
                 w = QWidget()
                 layout = QVBoxLayout(w)
                 sub = QTabWidget()
-                sub.addTab(self._org_tab(), "Overview / Roster")
+                sub.addTab(self._org_tab(), "Overview / Roster / Depth / Packages")
                 sub.addTab(self._team_playbooks_tab(), "Playbooks")
                 sub.addTab(self._team_schedule_analytics_tab(), "Schedule / Analytics")
                 sub.addTab(self._team_finances_tab(), "Finances")
@@ -287,6 +313,10 @@ class MainWindowFactory:
             def _team_playbooks_tab(self):
                 w = QWidget()
                 layout = QVBoxLayout(w)
+                tip = QLabel("Playbook Catalog: reference only. Use Home/Game controls to set active playcall.")
+                tip.setWordWrap(True)
+                tip.setStyleSheet("background:#f8fbff; border:1px solid #d2e1f0; padding:5px; border-radius:4px;")
+                layout.addWidget(tip)
                 self.team_playbook_table = QTableWidget(0, 6)
                 self.team_playbook_table.setHorizontalHeaderLabels(
                     ["Play ID", "Type", "Personnel", "Formation", "Off Concept", "Def Concept"]
@@ -298,6 +328,10 @@ class MainWindowFactory:
             def _team_schedule_analytics_tab(self):
                 w = QWidget()
                 layout = QVBoxLayout(w)
+                tip = QLabel("This view focuses on your team schedule and simple performance snapshots.")
+                tip.setWordWrap(True)
+                tip.setStyleSheet("background:#f8fbff; border:1px solid #d2e1f0; padding:5px; border-radius:4px;")
+                layout.addWidget(tip)
                 self.team_schedule_table = QTableWidget(0, 5)
                 self.team_schedule_table.setHorizontalHeaderLabels(["Week", "Game", "Opponent", "Location", "Status"])
                 self._configure_table(self.team_schedule_table)
@@ -311,6 +345,10 @@ class MainWindowFactory:
             def _team_finances_tab(self):
                 w = QWidget()
                 layout = QVBoxLayout(w)
+                tip = QLabel("Finances: cap status and policy reminders. Contract tooling will expand here.")
+                tip.setWordWrap(True)
+                tip.setStyleSheet("background:#f8fbff; border:1px solid #d2e1f0; padding:5px; border-radius:4px;")
+                layout.addWidget(tip)
                 self.finances_text = QTextEdit()
                 self.finances_text.setReadOnly(True)
                 layout.addWidget(self.finances_text)
@@ -319,6 +357,10 @@ class MainWindowFactory:
             def _team_pending_actions_tab(self):
                 w = QWidget()
                 layout = QVBoxLayout(w)
+                tip = QLabel("Pending Actions: priority queue of what to handle before advancing.")
+                tip.setWordWrap(True)
+                tip.setStyleSheet("background:#f8fbff; border:1px solid #d2e1f0; padding:5px; border-radius:4px;")
+                layout.addWidget(tip)
                 self.pending_actions = QListWidget()
                 layout.addWidget(self.pending_actions)
                 return w
@@ -341,8 +383,15 @@ class MainWindowFactory:
             def _org_tab(self):
                 w = QWidget()
                 layout = QVBoxLayout(w)
+                help_text = QLabel(
+                    "Team Management: keep depth chart and package assignments valid before playing. "
+                    "Use Auto-Build as a fast baseline, then edit slot-by-slot."
+                )
+                help_text.setWordWrap(True)
+                help_text.setStyleSheet("background:#f0f7ff; border:1px solid #c5d7ea; padding:6px; border-radius:4px;")
+                layout.addWidget(help_text)
                 row = QHBoxLayout()
-                refresh = QPushButton("Refresh Org")
+                refresh = QPushButton("Refresh Team Data")
                 refresh.clicked.connect(self._refresh_org)
                 advance = QPushButton("Advance Week")
                 advance.clicked.connect(lambda: self._dispatch(ActionType.ADVANCE_WEEK, {}, refresh=True))
@@ -360,7 +409,7 @@ class MainWindowFactory:
                 self.org_text.setMinimumHeight(160)
                 self.roster_table = QTableWidget(0, 10)
                 self.roster_table.setHorizontalHeaderLabels(
-                    ["Player", "#", "Name", "Pos", "Archetype", "Age", "Scout", "Scout Conf", "Coach", "Medical"]
+                    ["Player ID", "#", "Name", "Pos", "Archetype", "Age", "Scout", "Scout Conf", "Coach", "Medical"]
                 )
                 self._configure_table(self.roster_table)
                 self.depth_table = QTableWidget(0, 3)
@@ -417,6 +466,13 @@ class MainWindowFactory:
             def _game_tab(self):
                 w = QWidget()
                 layout = QVBoxLayout(w)
+                help_text = QLabel(
+                    "Game Controls: set a valid playcall, then use Play User Game for full execution "
+                    "or Sim Next Drive for fast progression."
+                )
+                help_text.setWordWrap(True)
+                help_text.setStyleSheet("background:#f0f7ff; border:1px solid #c5d7ea; padding:6px; border-radius:4px;")
+                layout.addWidget(help_text)
                 self.game_context = QLabel("No selected user game for this week.")
                 layout.addWidget(self.game_context)
                 controls = QWidget()
@@ -455,12 +511,12 @@ class MainWindowFactory:
                 grid.addWidget(QLabel("Aggression"), 3, 2)
                 grid.addWidget(self.aggression, 3, 3)
                 actions = QHBoxLayout()
-                set_call = QPushButton("Set Playcall")
+                set_call = QPushButton("Set Playcall (Current Params)")
                 set_call.clicked.connect(self._set_playcall)
                 play = QPushButton("Play User Game")
-                play.clicked.connect(lambda: self._dispatch(ActionType.PLAY_USER_GAME, {}, refresh=True))
-                sim = QPushButton("Sim User Game")
-                sim.clicked.connect(lambda: self._dispatch(ActionType.SIM_DRIVE, {}, refresh=True))
+                play.clicked.connect(self._play_user_game)
+                sim = QPushButton("Sim Next Drive")
+                sim.clicked.connect(self._sim_next_drive)
                 refresh = QPushButton("Refresh Game")
                 refresh.clicked.connect(self._refresh_game_state)
                 actions.addWidget(set_call)
@@ -490,6 +546,12 @@ class MainWindowFactory:
             def _league_tab(self):
                 w = QWidget()
                 layout = QVBoxLayout(w)
+                intro = QLabel(
+                    "League Hub: standings, structure, full schedule, retained-game film room, and analytics."
+                )
+                intro.setWordWrap(True)
+                intro.setStyleSheet("background:#f0f7ff; border:1px solid #c5d7ea; padding:6px; border-radius:4px;")
+                layout.addWidget(intro)
                 row = QHBoxLayout()
                 refresh_standings = QPushButton("Refresh Standings")
                 refresh_standings.clicked.connect(self._refresh_standings)
@@ -544,7 +606,7 @@ class MainWindowFactory:
                 leaders_layout.addWidget(self.award_leaders_text)
                 sub.addTab(leaders_page, "Leaders + Awards")
 
-                sub.addTab(self._film_tab(), "Film Room")
+                sub.addTab(self._film_tab(), "Film Room (Retained)")
                 sub.addTab(self._analytics_tab(), "Analytics")
                 layout.addWidget(sub)
                 return w
@@ -728,6 +790,17 @@ class MainWindowFactory:
                         f"Playcall set: {payload['playbook_entry_id']}",
                         4500,
                     )
+                    self._refresh_home()
+
+            def _play_user_game(self) -> None:
+                result = self._dispatch(ActionType.PLAY_USER_GAME, {}, refresh=True)
+                if result.success:
+                    self.statusBar().showMessage("User game completed.", 5000)
+
+            def _sim_next_drive(self) -> None:
+                result = self._dispatch(ActionType.SIM_DRIVE, {}, refresh=True)
+                if result.success:
+                    self.statusBar().showMessage("Simulated next drive.", 5000)
 
             def _auto_build_packages(self) -> None:
                 result = self._dispatch(ActionType.AUTO_BUILD_PACKAGE_BOOK, {}, refresh=True)
@@ -782,6 +855,19 @@ class MainWindowFactory:
                     self.home_quick.setPlainText("Home dashboard unavailable. Create/load a franchise profile.")
                     return
                 data = result.data
+                readiness_result = self._dispatch(ActionType.GET_RUNTIME_READINESS, {}, log=False)
+                readiness_ok = bool(readiness_result.success and readiness_result.data and readiness_result.data.get("ready"))
+                has_schedule = len(self._schedule_rows) > 0
+                has_user_game = any(bool(row.get("is_user_game")) for row in self._schedule_rows)
+                package_count = int(data.get("package_count", 0))
+                packages_ready = package_count > 0
+                workflow_lines = [
+                    f"1) Runtime Ready: {'OK' if readiness_ok else 'PENDING'}",
+                    f"2) Week Schedule Loaded: {'OK' if has_schedule else 'PENDING'}",
+                    f"3) User Game Selected: {'OK' if has_user_game else 'PENDING'}",
+                    f"4) Team Packages Present: {'OK' if packages_ready else 'PENDING'}",
+                    "5) Set Playcall from controls below, then Play User Game or Sim Next Drive.",
+                ]
                 lines = [
                     f"Profile: {data.get('profile', {}).get('profile_name', '')}",
                     f"Mode: {data.get('mode', 'unknown')}",
@@ -789,11 +875,17 @@ class MainWindowFactory:
                     f"Cap Space: ${int(data.get('cap_space', 0)):,}",
                     f"Roster Size: {data.get('roster_size', 0)} | Packages: {data.get('package_count', 0)}",
                     "",
-                    "This Week Focus:",
-                    "- Review matchup and set user game from the schedule table.",
-                    "- Confirm depth chart and package assignments before kickoff.",
-                    "- Set playcall profile and run Play/Sim from the game panel.",
+                    "This Week Workflow:",
                 ]
+                lines.extend(workflow_lines)
+                lines.extend(
+                    [
+                        "",
+                        "Tips:",
+                        "- If user game is missing: select a row in schedule table and click Set Selected User Game.",
+                        "- If packages are empty: go Team -> Overview / Roster and click Auto-Build Packages.",
+                    ]
+                )
                 self.home_quick.setPlainText("\n".join(lines))
 
             def _refresh_team_playbook_catalog(self) -> None:
@@ -1067,6 +1159,7 @@ class MainWindowFactory:
                         for j, value in enumerate(values):
                             self.team_schedule_table.setItem(i, j, QTableWidgetItem(str(value)))
                 self._update_user_game_context()
+                self._refresh_home()
 
             def _set_user_game(self) -> None:
                 selected = self.schedule_table.selectedItems()
@@ -1075,11 +1168,19 @@ class MainWindowFactory:
                 if not selected:
                     QMessageBox.information(self, "Select Game", "Select a game from the schedule table first.")
                     return
-                row_index = selected[0].row()
-                if row_index < 0 or row_index >= len(self._schedule_rows):
+                table = selected[0].tableWidget()
+                if table is None:
                     QMessageBox.information(self, "Select Game", "Selected row is invalid.")
                     return
-                game_id = str(self._schedule_rows[row_index]["game_id"])
+                row_index = selected[0].row()
+                game_item = table.item(row_index, 0)
+                if game_item is None:
+                    QMessageBox.information(self, "Select Game", "Selected row has no game id.")
+                    return
+                game_id = game_item.text().strip()
+                if not game_id:
+                    QMessageBox.information(self, "Select Game", "Selected row has no game id.")
+                    return
                 result = self._dispatch(
                     ActionType.SET_USER_GAME,
                     {"week": int(self.schedule_week.value()), "game_id": game_id},
@@ -1104,7 +1205,9 @@ class MainWindowFactory:
                 self._update_user_game_context()
                 result = self._dispatch(ActionType.GET_GAME_STATE, {}, log=False)
                 if not result.success or not result.data:
-                    self.game_summary.setText("No user game played this week.")
+                    self.game_summary.setText(
+                        "No game state yet. Set this week's user game, then set playcall and run Play/Sim."
+                    )
                     self.game_table.setRowCount(0)
                     self._game_snaps = []
                     self.game_detail.setPlainText("")
