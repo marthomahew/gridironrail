@@ -60,11 +60,59 @@ class MainWindowFactory:
                 self.resize(1500, 920)
                 self.setStyleSheet(
                     """
-                    QWidget { font-size: 12px; }
-                    QTableWidget { gridline-color: #d7dce5; alternate-background-color: #f5f7fb; }
-                    QHeaderView::section { background: #e8edf7; padding: 4px; border: 1px solid #d0d7e2; }
-                    QPushButton { padding: 6px 10px; }
-                    QLabel { color: #1f2630; }
+                    QWidget {
+                        font-size: 12px;
+                        color: #0f1d2b;
+                        background: #f3f6fb;
+                    }
+                    QTabWidget::pane {
+                        border: 1px solid #b9c8d8;
+                        background: #ffffff;
+                    }
+                    QTabBar::tab {
+                        background: #dfe9f5;
+                        color: #0f1d2b;
+                        border: 1px solid #b9c8d8;
+                        border-bottom: none;
+                        padding: 8px 12px;
+                        min-width: 110px;
+                    }
+                    QTabBar::tab:selected {
+                        background: #ffffff;
+                        font-weight: 600;
+                    }
+                    QTableWidget {
+                        gridline-color: #d3deeb;
+                        alternate-background-color: #f5f9ff;
+                        background: #ffffff;
+                        selection-background-color: #2f6ea7;
+                        selection-color: #ffffff;
+                        color: #0d1b2a;
+                    }
+                    QHeaderView::section {
+                        background: #e7eff9;
+                        color: #0f1d2b;
+                        padding: 6px;
+                        border: 1px solid #c7d3e1;
+                        font-weight: 600;
+                    }
+                    QTextEdit, QLineEdit, QComboBox, QSpinBox, QListWidget {
+                        background: #ffffff;
+                        color: #0d1b2a;
+                        border: 1px solid #c7d3e1;
+                        border-radius: 4px;
+                        padding: 3px;
+                    }
+                    QPushButton {
+                        padding: 6px 11px;
+                        background: #2f6ea7;
+                        color: #ffffff;
+                        border: 1px solid #255781;
+                        border-radius: 4px;
+                    }
+                    QPushButton:hover { background: #265a89; }
+                    QPushButton:pressed { background: #1f4b73; }
+                    QLabel { color: #102030; }
                     """
                 )
                 self._actor_team_id = actor_team_id
@@ -79,11 +127,10 @@ class MainWindowFactory:
                 self.output.document().setMaximumBlockCount(500)
 
                 tabs = QTabWidget()
-                tabs.addTab(self._org_tab(), "Organization")
-                tabs.addTab(self._game_tab(), "Game")
+                tabs.addTab(self._home_tab(), "Home")
+                tabs.addTab(self._team_tab(), "Team")
                 tabs.addTab(self._league_tab(), "League")
-                tabs.addTab(self._film_tab(), "Film Room")
-                tabs.addTab(self._analytics_tab(), "Analytics")
+                tabs.addTab(self._narrative_tab(), "Narrative")
                 if debug_gate.enabled:
                     tabs.addTab(self._dev_tab(), "Dev Tools")
 
@@ -103,7 +150,9 @@ class MainWindowFactory:
 
                 self._init_game_controls()
                 self._refresh_runtime_readiness()
+                self._refresh_home()
                 self._refresh_org()
+                self._refresh_team_playbook_catalog()
                 self._refresh_league_structure()
                 self._refresh_schedule()
                 self._refresh_standings()
@@ -131,7 +180,9 @@ class MainWindowFactory:
                 if not result.success and log:
                     QMessageBox.warning(self, "Action failed", result.message)
                 if refresh:
+                    self._refresh_home()
                     self._refresh_org()
+                    self._refresh_team_playbook_catalog()
                     self._refresh_league_structure()
                     self._refresh_schedule()
                     self._refresh_standings()
@@ -173,6 +224,119 @@ class MainWindowFactory:
                 if idx >= 0:
                     combo.setCurrentIndex(idx)
                 combo.blockSignals(False)
+
+            def _home_tab(self):
+                w = QWidget()
+                layout = QVBoxLayout(w)
+                top_row = QHBoxLayout()
+                refresh_home = QPushButton("Refresh Home")
+                refresh_home.clicked.connect(self._refresh_home)
+                refresh_schedule = QPushButton("Refresh This Week")
+                refresh_schedule.clicked.connect(self._refresh_schedule)
+                set_user_game = QPushButton("Set Selected User Game")
+                set_user_game.clicked.connect(self._set_user_game)
+                top_row.addWidget(refresh_home)
+                top_row.addWidget(refresh_schedule)
+                top_row.addWidget(set_user_game)
+                top_row.addStretch(1)
+                layout.addLayout(top_row)
+
+                self.home_quick = QTextEdit()
+                self.home_quick.setReadOnly(True)
+                self.home_quick.setMinimumHeight(130)
+                layout.addWidget(self.home_quick)
+
+                header_row = QHBoxLayout()
+                self.current_week_label = QLabel("Current Week: -")
+                self.user_game_label = QLabel("User Game: -")
+                self.schedule_week = QSpinBox()
+                self.schedule_week.setRange(1, 24)
+                self.schedule_week.setValue(1)
+                header_row.addWidget(self.current_week_label)
+                header_row.addSpacing(18)
+                header_row.addWidget(self.user_game_label)
+                header_row.addStretch(1)
+                header_row.addWidget(QLabel("Week"))
+                header_row.addWidget(self.schedule_week)
+                layout.addLayout(header_row)
+
+                self.schedule_table = QTableWidget(0, 5)
+                self.schedule_table.setHorizontalHeaderLabels(["Game ID", "Away", "Home", "Status", "User Game"])
+                self._configure_table(self.schedule_table)
+                self.schedule_table.setMinimumHeight(170)
+                layout.addWidget(self.schedule_table)
+
+                self.game_context = QLabel("No selected user game for this week.")
+                layout.addWidget(self.game_context)
+                layout.addWidget(self._game_tab())
+                return w
+
+            def _team_tab(self):
+                w = QWidget()
+                layout = QVBoxLayout(w)
+                sub = QTabWidget()
+                sub.addTab(self._org_tab(), "Overview / Roster")
+                sub.addTab(self._team_playbooks_tab(), "Playbooks")
+                sub.addTab(self._team_schedule_analytics_tab(), "Schedule / Analytics")
+                sub.addTab(self._team_finances_tab(), "Finances")
+                sub.addTab(self._team_pending_actions_tab(), "Pending Actions")
+                sub.addTab(self._team_trade_block_tab(), "Trade Block")
+                layout.addWidget(sub)
+                return w
+
+            def _team_playbooks_tab(self):
+                w = QWidget()
+                layout = QVBoxLayout(w)
+                self.team_playbook_table = QTableWidget(0, 6)
+                self.team_playbook_table.setHorizontalHeaderLabels(
+                    ["Play ID", "Type", "Personnel", "Formation", "Off Concept", "Def Concept"]
+                )
+                self._configure_table(self.team_playbook_table)
+                layout.addWidget(self.team_playbook_table)
+                return w
+
+            def _team_schedule_analytics_tab(self):
+                w = QWidget()
+                layout = QVBoxLayout(w)
+                self.team_schedule_table = QTableWidget(0, 5)
+                self.team_schedule_table.setHorizontalHeaderLabels(["Week", "Game", "Opponent", "Location", "Status"])
+                self._configure_table(self.team_schedule_table)
+                self.team_schedule_table.setMinimumHeight(220)
+                self.team_analytics_text = QTextEdit()
+                self.team_analytics_text.setReadOnly(True)
+                layout.addWidget(self.team_schedule_table)
+                layout.addWidget(self.team_analytics_text)
+                return w
+
+            def _team_finances_tab(self):
+                w = QWidget()
+                layout = QVBoxLayout(w)
+                self.finances_text = QTextEdit()
+                self.finances_text.setReadOnly(True)
+                layout.addWidget(self.finances_text)
+                return w
+
+            def _team_pending_actions_tab(self):
+                w = QWidget()
+                layout = QVBoxLayout(w)
+                self.pending_actions = QListWidget()
+                layout.addWidget(self.pending_actions)
+                return w
+
+            def _team_trade_block_tab(self):
+                w = QWidget()
+                layout = QVBoxLayout(w)
+                self.trade_block_text = QTextEdit()
+                self.trade_block_text.setReadOnly(True)
+                self.trade_block_text.setPlainText(
+                    "Trade block scaffolding\n\n"
+                    "- List of users assets on block\n"
+                    "- Incoming offers feed\n"
+                    "- Quick toggle to mark/unmark players and picks\n"
+                    "- Trade negotiation workspace (future)\n"
+                )
+                layout.addWidget(self.trade_block_text)
+                return w
 
             def _org_tab(self):
                 w = QWidget()
@@ -326,35 +490,23 @@ class MainWindowFactory:
             def _league_tab(self):
                 w = QWidget()
                 layout = QVBoxLayout(w)
-
                 row = QHBoxLayout()
-                self.current_week_label = QLabel("Current Week: -")
-                self.schedule_week = QSpinBox()
-                self.schedule_week.setRange(1, 24)
-                self.schedule_week.setValue(1)
-                refresh_schedule = QPushButton("Refresh Schedule")
-                refresh_schedule.clicked.connect(self._refresh_schedule)
-                set_user_game = QPushButton("Set Selected User Game")
-                set_user_game.clicked.connect(self._set_user_game)
                 refresh_standings = QPushButton("Refresh Standings")
                 refresh_standings.clicked.connect(self._refresh_standings)
-                row.addWidget(self.current_week_label)
-                row.addWidget(QLabel("Week"))
-                row.addWidget(self.schedule_week)
-                row.addWidget(refresh_schedule)
-                row.addWidget(set_user_game)
+                refresh_schedule = QPushButton("Refresh League Schedule")
+                refresh_schedule.clicked.connect(self._refresh_schedule)
+                refresh_structure = QPushButton("Refresh Structure")
+                refresh_structure.clicked.connect(self._refresh_league_structure)
                 row.addWidget(refresh_standings)
+                row.addWidget(refresh_schedule)
+                row.addWidget(refresh_structure)
                 row.addStretch(1)
                 layout.addLayout(row)
 
-                self.user_game_label = QLabel("User Game: -")
-                layout.addWidget(self.user_game_label)
+                sub = QTabWidget()
 
-                self.schedule_table = QTableWidget(0, 5)
-                self.schedule_table.setHorizontalHeaderLabels(["Game ID", "Away", "Home", "Status", "User Game"])
-                self._configure_table(self.schedule_table)
-                layout.addWidget(self.schedule_table)
-
+                standings_page = QWidget()
+                standings_layout = QVBoxLayout(standings_page)
                 split = QSplitter()
                 split.setOrientation(Qt.Orientation.Horizontal)
                 self.standings = QTableWidget(0, 5)
@@ -365,7 +517,57 @@ class MainWindowFactory:
                 self.league_structure.setReadOnly(True)
                 split.addWidget(self.league_structure)
                 split.setSizes([820, 520])
-                layout.addWidget(split)
+                standings_layout.addWidget(split)
+                sub.addTab(standings_page, "Standings + Structure")
+
+                schedule_page = QWidget()
+                schedule_layout = QVBoxLayout(schedule_page)
+                self.league_schedule_table = QTableWidget(0, 5)
+                self.league_schedule_table.setHorizontalHeaderLabels(
+                    ["Game ID", "Away", "Home", "Status", "User Game"]
+                )
+                self._configure_table(self.league_schedule_table)
+                schedule_layout.addWidget(self.league_schedule_table)
+                sub.addTab(schedule_page, "League Schedule")
+
+                leaders_page = QWidget()
+                leaders_layout = QVBoxLayout(leaders_page)
+                self.award_leaders_text = QTextEdit()
+                self.award_leaders_text.setReadOnly(True)
+                self.award_leaders_text.setPlainText(
+                    "Award Leaders (scaffold)\n\n"
+                    "- MVP race\n"
+                    "- OPOY / DPOY race\n"
+                    "- Rookie races\n"
+                    "- Team offense/defense leaders\n"
+                )
+                leaders_layout.addWidget(self.award_leaders_text)
+                sub.addTab(leaders_page, "Leaders + Awards")
+
+                sub.addTab(self._film_tab(), "Film Room")
+                sub.addTab(self._analytics_tab(), "Analytics")
+                layout.addWidget(sub)
+                return w
+
+            def _narrative_tab(self):
+                w = QWidget()
+                layout = QVBoxLayout(w)
+                title = QLabel("Narrative 2.0 Scaffold")
+                title.setStyleSheet("font-weight: 600; font-size: 14px;")
+                layout.addWidget(title)
+                self.narrative_text = QTextEdit()
+                self.narrative_text.setReadOnly(True)
+                self.narrative_text.setPlainText(
+                    "Future narrative surface:\n\n"
+                    "- Newspapers and sports journalism\n"
+                    "- Talk shows and commentary\n"
+                    "- Team and league rumor feed\n"
+                    "- Fan/forum discourse\n"
+                    "- Staff/owner/player internal messaging\n"
+                    "- Storyline timeline with evidence handles\n\n"
+                    "1.0 status: event scaffolding only; generation not enabled yet."
+                )
+                layout.addWidget(self.narrative_text)
                 return w
 
             def _film_tab(self):
@@ -574,6 +776,43 @@ class MainWindowFactory:
                 slots = sorted({str(row.get("slot", "")) for row in rows if str(row.get("package_id", "")) == package_id})
                 self._set_items(self.package_slot_edit, slots)
 
+            def _refresh_home(self) -> None:
+                result = self._dispatch(ActionType.GET_ORG_DASHBOARD, {}, log=False)
+                if not result.success or not result.data:
+                    self.home_quick.setPlainText("Home dashboard unavailable. Create/load a franchise profile.")
+                    return
+                data = result.data
+                lines = [
+                    f"Profile: {data.get('profile', {}).get('profile_name', '')}",
+                    f"Mode: {data.get('mode', 'unknown')}",
+                    f"Team: {data.get('team_name', '')} ({data.get('team_id', '')})",
+                    f"Cap Space: ${int(data.get('cap_space', 0)):,}",
+                    f"Roster Size: {data.get('roster_size', 0)} | Packages: {data.get('package_count', 0)}",
+                    "",
+                    "This Week Focus:",
+                    "- Review matchup and set user game from the schedule table.",
+                    "- Confirm depth chart and package assignments before kickoff.",
+                    "- Set playcall profile and run Play/Sim from the game panel.",
+                ]
+                self.home_quick.setPlainText("\n".join(lines))
+
+            def _refresh_team_playbook_catalog(self) -> None:
+                if not hasattr(self, "team_playbook_table"):
+                    return
+                entries = sorted(self._playbook.values(), key=lambda entry: entry.play_id)
+                self.team_playbook_table.setRowCount(len(entries))
+                for i, entry in enumerate(entries):
+                    values = [
+                        entry.play_id,
+                        entry.play_type.value,
+                        entry.personnel_id,
+                        entry.formation_id,
+                        entry.offensive_concept_id,
+                        entry.defensive_concept_id,
+                    ]
+                    for j, value in enumerate(values):
+                        self.team_playbook_table.setItem(i, j, QTableWidgetItem(str(value)))
+
             def _refresh_org(self) -> None:
                 result = self._dispatch(ActionType.GET_ORG_DASHBOARD, {}, log=False)
                 if not result.success:
@@ -583,6 +822,11 @@ class MainWindowFactory:
                     self.roster_table.setRowCount(0)
                     self.depth_table.setRowCount(0)
                     self.package_table.setRowCount(0)
+                    if hasattr(self, "finances_text"):
+                        self.finances_text.setPlainText("No finance data.")
+                    if hasattr(self, "pending_actions"):
+                        self.pending_actions.clear()
+                        self.pending_actions.addItem("No pending actions available.")
                     return
                 data = result.data
                 lines = []
@@ -612,6 +856,35 @@ class MainWindowFactory:
                 for tx in data.get("transactions", [])[:12]:
                     lines.append(f"- W{tx['week']} {tx['tx_type']}: {tx['summary']}")
                 self.org_text.setPlainText("\n".join(lines))
+                if hasattr(self, "finances_text"):
+                    cap_space = int(data.get("cap_space", 0))
+                    mode = str(data.get("mode", "unknown")).upper()
+                    roster_size = int(data.get("roster_size", 0))
+                    package_count = int(data.get("package_count", 0))
+                    finance_lines = [
+                        "Team Finance Snapshot",
+                        "",
+                        f"Mode: {mode}",
+                        f"Cap Space: ${cap_space:,}",
+                        f"Roster Size: {roster_size}",
+                        f"Package Count: {package_count}",
+                        "",
+                        "Policy Notes:",
+                        "- Hard cap/roster enforcement active.",
+                        "- No auto-repair or silent rescue on violations.",
+                    ]
+                    self.finances_text.setPlainText("\n".join(finance_lines))
+                if hasattr(self, "pending_actions"):
+                    self.pending_actions.clear()
+                    cap_space = int(data.get("cap_space", 0))
+                    if cap_space < 0:
+                        self.pending_actions.addItem("BLOCKING: Team is over cap. Resolve before restricted actions.")
+                    elif cap_space < 5_000_000:
+                        self.pending_actions.addItem("Cap is tight (<$5M). Review contracts before advancing.")
+                    else:
+                        self.pending_actions.addItem("No urgent finance blockers.")
+                    self.pending_actions.addItem("Review depth chart and package validation before game day.")
+                    self.pending_actions.addItem("Check weekly schedule and confirm selected user game.")
                 roster_result = self._dispatch(
                     ActionType.GET_TEAM_ROSTER,
                     {"team_id": data.get("team_id", self._actor_team_id)},
@@ -661,6 +934,29 @@ class MainWindowFactory:
                     label = f"#{row.get('jersey_number', '')} {row.get('name', '')} ({row.get('position', '')})"
                     self.depth_player_edit.addItem(label, player_id)
                     self.package_player_edit.addItem(label, player_id)
+                if hasattr(self, "team_analytics_text"):
+                    position_counts: dict[str, int] = {}
+                    for row in roster_rows:
+                        pos = str(row.get("position", "UNK"))
+                        position_counts[pos] = position_counts.get(pos, 0) + 1
+                    top_scout = sorted(
+                        roster_rows,
+                        key=lambda r: float(r.get("perceived_scout_estimate") or 0.0),
+                        reverse=True,
+                    )[:8]
+                    analytics_lines = ["Team Analytics Snapshot", "", "Position Counts:"]
+                    analytics_lines.extend(
+                        [f"- {pos}: {count}" for pos, count in sorted(position_counts.items(), key=lambda kv: kv[0])]
+                    )
+                    analytics_lines.append("")
+                    analytics_lines.append("Top Perceived Talent (Scout):")
+                    for row in top_scout:
+                        analytics_lines.append(
+                            f"- {row.get('name', '')} {row.get('position', '')} "
+                            f"est={row.get('perceived_scout_estimate', '')} "
+                            f"conf={row.get('perceived_scout_confidence', '')}"
+                        )
+                    self.team_analytics_text.setPlainText("\n".join(analytics_lines))
 
                 package_result = self._dispatch(
                     ActionType.GET_PACKAGE_BOOK,
@@ -708,6 +1004,10 @@ class MainWindowFactory:
                 result = self._dispatch(ActionType.GET_WEEK_SCHEDULE, {"week": week}, log=False)
                 if not result.success or not result.data:
                     self.schedule_table.setRowCount(0)
+                    if hasattr(self, "league_schedule_table"):
+                        self.league_schedule_table.setRowCount(0)
+                    if hasattr(self, "team_schedule_table"):
+                        self.team_schedule_table.setRowCount(0)
                     self._schedule_rows = []
                     self.user_game_label.setText("User Game: -")
                     self.game_context.setText("No selected user game for this week.")
@@ -729,10 +1029,49 @@ class MainWindowFactory:
                     ]
                     for j, value in enumerate(values):
                         self.schedule_table.setItem(i, j, QTableWidgetItem(str(value)))
+                if hasattr(self, "league_schedule_table"):
+                    self.league_schedule_table.setRowCount(len(rows))
+                    for i, row in enumerate(rows):
+                        values = [
+                            row.get("game_id", ""),
+                            f"{row.get('away_team_name', '')} ({row.get('away_team_id', '')})",
+                            f"{row.get('home_team_name', '')} ({row.get('home_team_id', '')})",
+                            row.get("status", ""),
+                            "YES" if bool(row.get("is_user_game")) else "",
+                        ]
+                        for j, value in enumerate(values):
+                            self.league_schedule_table.setItem(i, j, QTableWidgetItem(str(value)))
+                if hasattr(self, "team_schedule_table"):
+                    team_rows = [
+                        row
+                        for row in rows
+                        if str(row.get("home_team_id", "")) == self._actor_team_id
+                        or str(row.get("away_team_id", "")) == self._actor_team_id
+                    ]
+                    self.team_schedule_table.setRowCount(len(team_rows))
+                    for i, row in enumerate(team_rows):
+                        is_home = str(row.get("home_team_id", "")) == self._actor_team_id
+                        opponent_name = (
+                            row.get("away_team_name", "")
+                            if is_home
+                            else row.get("home_team_name", "")
+                        )
+                        location = "Home" if is_home else "Away"
+                        values = [
+                            row.get("week", week),
+                            row.get("game_id", ""),
+                            opponent_name,
+                            location,
+                            row.get("status", ""),
+                        ]
+                        for j, value in enumerate(values):
+                            self.team_schedule_table.setItem(i, j, QTableWidgetItem(str(value)))
                 self._update_user_game_context()
 
             def _set_user_game(self) -> None:
                 selected = self.schedule_table.selectedItems()
+                if not selected and hasattr(self, "league_schedule_table"):
+                    selected = self.league_schedule_table.selectedItems()
                 if not selected:
                     QMessageBox.information(self, "Select Game", "Select a game from the schedule table first.")
                     return
@@ -840,6 +1179,27 @@ class MainWindowFactory:
                 for i, row in enumerate(rows):
                     for j, value in enumerate([row["team_id"], row["wins"], row["losses"], row["ties"], row["point_diff"]]):
                         self.standings.setItem(i, j, QTableWidgetItem(str(value)))
+                if hasattr(self, "award_leaders_text"):
+                    leaders = sorted(rows, key=lambda r: int(r.get("point_diff", 0)), reverse=True)[:8]
+                    lines = [
+                        "League Leaders Snapshot",
+                        "",
+                        "Top Point Differential Teams:",
+                    ]
+                    for row in leaders:
+                        lines.append(
+                            f"- {row.get('team_id', '')}: "
+                            f"{row.get('wins', 0)}-{row.get('losses', 0)}-{row.get('ties', 0)} "
+                            f"(PD {row.get('point_diff', 0)})"
+                        )
+                    lines.extend(
+                        [
+                            "",
+                            "Awards Module (Scaffold):",
+                            "- MVP, OPOY, DPOY, ROTY leaders pending deeper org metrics wiring.",
+                        ]
+                    )
+                    self.award_leaders_text.setPlainText("\n".join(lines))
 
             def _refresh_retained_games(self) -> None:
                 result = self._dispatch(ActionType.GET_RETAINED_GAMES, {}, log=False)
